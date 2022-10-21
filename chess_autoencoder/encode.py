@@ -61,13 +61,13 @@ CO_I2P = {
 }
 
 
-def encode(board):
+def encode_board(board):
   ar = np.zeros(SHAPE)
   for piece in [PAWN, KNIGHT, BISHOP, ROOK, QUEEN, KING]:
     for color in [WHITE, BLACK]:
       for sq in board.pieces(piece, color):
         index = CO_P2I[color][piece]
-        print(piece, color, sq, index)
+        #print(piece, color, sq, index)
         assert ar[index][sq] == 0.0
         ar[index][sq] = 1.0
   return ar

@@ -1,4 +1,4 @@
-from encode import encode, SHAPE, FLAT_SHAPE
+from encode import encode_board, SHAPE, FLAT_SHAPE
 import chess
 
 from absl import app
@@ -8,34 +8,33 @@ import tensorflow as tf
 import tensorflow.keras
 import tensorflow.keras.layers
 
-from tensorflow.keras import Model
+from tensorflow.keras import Model, Input
 from tensorflow.keras.layers import Flatten, Reshape, Input, Dense
 
 
-def main(argv):
-  fen = 'r1bq1rk1/4bppp/p2p1n2/npp1p3/4P3/2P2N1P/PPBP1PP1/RNBQR1K1 w - -'
-  board = chess.Board(fen)
-  enc = encode(board)
-  print(enc)
-  enc = tf.expand_dims(enc, axis=0)
-  print()
-  print(enc)
-
-  import keras
-
-  encoding_dim = 32
-
-  input_img = keras.Input(shape=SHAPE)
-
+def create_models(encoding_dim=32):
+  input_img = Input(shape=SHAPE)
   flat = Flatten()(input_img)
   encoded = Dense(encoding_dim, activation='relu')(flat)
   #unflat = Reshape(SHAPE)(encoded)
   decoded = Dense(FLAT_SHAPE, activation='sigmoid')(encoded)
 
+  encoder = Model(inputs=input_img, outputs=encoded, name='encoder')
+  autoencoder = Model(inputs=input_img, outputs=decoded, name='autoencoder')
+  return autoencoder, encoder
 
-  autoencoder = Model(inputs=input_img, outputs=decoded)
-  encoder = Model(inputs=input_img, outputs=encoded)
-  #decoder = Model(inputs=input_img, outputs=encoded)
+
+def main(argv):
+  fen = 'r1bq1rk1/4bppp/p2p1n2/npp1p3/4P3/2P2N1P/PPBP1PP1/RNBQR1K1 w - -'
+  board = chess.Board(fen)
+  enc = encode_board(board)
+  print(enc)
+  enc = tf.expand_dims(enc, axis=0)
+  print()
+  print(enc)
+
+  autoencoder, encoder = create_models()
+
   autoencoder.summary()
   print()
   print('#')
