@@ -1,7 +1,10 @@
+from contextlib import redirect_stdout
 import functools
-import sys
-import os
 import json
+import logging
+import os
+import sys
+import warnings
 
 import chess
 
@@ -9,6 +12,7 @@ import numpy as np
 
 from absl import app
 from absl import flags
+from absl import logging as alogging
 
 import tensorflow as tf
 import tensorflow.keras
@@ -22,7 +26,7 @@ from tensorflow.keras.losses import BinaryCrossentropy
 from tensorflow.keras.metrics import Mean, Accuracy, BinaryAccuracy
 
 from encode import encode_board, SHAPE, FLAT_SHAPE
-from model import create_models
+from model import create_models, create_conv_models
 
 FLAGS = flags.FLAGS
 flags.DEFINE_integer('dim', 32, '')
@@ -32,6 +36,11 @@ flags.DEFINE_integer('steps', 100, '')
 flags.DEFINE_integer('log_freq', 10, '')
 flags.DEFINE_integer('repeat', 0, '')
 flags.DEFINE_integer('shuffle', 1024, '')
+
+flags.DEFINE_integer('num_layers', 2, '')
+flags.DEFINE_integer('num_filters', 12, '')
+
+flags.DEFINE_string('suffix', '', '')
 
 AUTOTUNE = tf.data.AUTOTUNE
 
@@ -103,18 +112,26 @@ def train(autoencoder, ds):
 
 
 def main(argv):
-  autoencoder, encoder = create_models(FLAGS.dim)
-  autoencoder.summary()
-  print('#')
-  encoder.summary()
-  print('#')
-  fn = argv[1:][0]
+  tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
+  alogging.set_verbosity('error')
+  os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+  warnings.filterwarnings('ignore', category=Warning)
 
-  n = 0
-  with open(fn, 'r') as f:
-    for line in f.readlines():
-      n += 1
-  print('n', n)
+  autoencoder, encoder = create_conv_models(FLAGS.dim,
+                                            num_filters=FLAGS.num_filters,
+                                            num_layers=FLAGS.num_layers)
+
+  if FLAGS.suffix:
+    suffix = f'-{FLAGS.suffix}'
+
+  fn = os.path.join(f'model-summary{suffix}.txt')
+  with open(fn, 'w') as f:
+    with redirect_stdout(f):
+      autoencoder.summary()
+      print('#')
+      encoder.summary()
+
+  fn = argv[1:][0]
 
   ds = create_dataset(fn)
 
@@ -125,9 +142,9 @@ def main(argv):
 
   train(autoencoder, ds)
 
-  autoencoder.save('autoencoder.model')
-  encoder.save('encoder.model')
 
+  autoencoder.save(f'autoencoder{suffix}.model')
+  encoder.save(f'encoder{suffix}.model')
 
 
 if __name__ == "__main__":
