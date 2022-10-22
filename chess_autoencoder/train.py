@@ -1,6 +1,7 @@
 import functools
 import sys
 import os
+import json
 
 import chess
 
@@ -16,7 +17,10 @@ from tensorflow.keras.layers import Flatten, Reshape, Input, Dense
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.losses import BinaryCrossentropy
 
-from tensorflow.keras.metrics import Mean
+from tensorflow.keras.metrics import Mean, Accuracy, BinaryAccuracy
+
+import sqlitedict
+
 
 from encode import encode_board, SHAPE, FLAT_SHAPE
 from model import create_models
@@ -34,13 +38,12 @@ AUTOTUNE = tf.data.AUTOTUNE
 
 
 def generate_training_data(fn):
-  while True:
-    print(f'Open {fn}')
-    with open(fn, 'r') as f:
-      for line in f.readlines():
-        fen, _ = line.split(',')
-        board = chess.Board(fen)
-        yield encode_board(board)
+  print(f'Open {fn}')
+  with open(fn, 'r') as f:
+    for line in f.readlines():
+      fen, _ = line.split(',')
+      board = chess.Board(fen)
+      yield encode_board(board)
 
 
 def create_dataset(fn):
@@ -48,13 +51,40 @@ def create_dataset(fn):
   ds = tf.data.Dataset.from_generator(gen,
                                       output_signature=(
                                         tf.TensorSpec(shape=SHAPE, dtype=tf.float32)))
-  if FLAGS.repeat > 1:
-    ds = ds.repeat(FLAGS.repeat)
   if FLAGS.shuffle:
     ds = ds.shuffle(FLAGS.shuffle)
   ds = ds.batch(FLAGS.batch, drop_remainder=True)
   ds = ds.prefetch(AUTOTUNE)
   return ds
+
+
+def train(autoencoder, ds):
+  optimizer = Adam(learning_rate=FLAGS.lr)
+  loss_fn = BinaryCrossentropy()
+
+  loss_tracker = Mean(name='loss')
+  acc_tracker = Accuracy(name='acc')
+  bin_acc_tracker = BinaryAccuracy(name='bin_acc')
+
+  for step, x in enumerate(ds):
+    fx = tf.reshape(x, (FLAGS.batch, FLAT_SHAPE))
+    with tf.GradientTape() as tape:
+      y = autoencoder(x, training=True)
+      loss_value = loss_fn(y, fx)
+
+    trainable_vars = autoencoder.trainable_variables
+    grads = tape.gradient(loss_value, trainable_vars)
+    optimizer.apply_gradients(zip(grads, trainable_vars))
+
+    loss_tracker.update_state(values=loss_value)
+    acc_tracker.update_state(y_true=fx, y_pred=y)
+    bin_acc_tracker.update_state(y_true=fx, y_pred=y)
+
+    if step % FLAGS.log_freq == 0:
+      print(f'{step:6d} {loss_tracker.result().numpy():.4f} {acc_tracker.result().numpy():.4f} {bin_acc_tracker.result().numpy():.4f}')
+      loss_tracker.reset_state()
+      acc_tracker.reset_state()
+      bin_acc_tracker.reset_state()
 
 
 def main(argv):
@@ -71,33 +101,35 @@ def main(argv):
 
   ds = create_dataset(fn)
 
-  optimizer = Adam(learning_rate=FLAGS.lr)
-  loss_fn = BinaryCrossentropy()
-
-  loss_tracker = tf.keras.metrics.Mean(name='loss')
-
   if FLAGS.steps:
     ds = ds.take(FLAGS.steps)
-  for step, x in enumerate(ds):
-    fx = tf.reshape(x, (FLAGS.batch, FLAT_SHAPE))
-    with tf.GradientTape() as tape:
-      y = autoencoder(x, training=True)
-      loss_value = loss_fn(y, fx)
+  if FLAGS.repeat > 1:
+    ds = ds.repeat(FLAGS.repeat)
 
-    trainable_vars = autoencoder.trainable_variables
-    grads = tape.gradient(loss_value, trainable_vars)
-    optimizer.apply_gradients(zip(grads, trainable_vars))
+  train(autoencoder, ds)
 
-    loss_tracker.update_state(values=loss_value)
-    if step % FLAGS.log_freq == 0:
-      print(f'{step:6d} {loss_tracker.result().numpy():.4f}')
-      loss_tracker.reset_state()
+  print('done training')
+  n = 0
+  for b in create_dataset(fn):
+    n += 1
+    autoencoder(b, training=False)
+    tot = n * FLAGS.batch
+    if tot % 1000 == 0:
+      print(n, tot)
+  print('raw')
+  n = 0
+  for enc in generate_training_data(fn):
+    n += 1
+    if n % 1000 == 0:
+      print(n)
+      embedding = autoencoder(tf.expand_dims(enc, axis=0), training=False)
+  print('done')
 
 
-
-
-
-
+  # rdb = sqlitedict.open(filename=FLAGS.reference,
+  #                       flag='c',
+  #                       encode=json.dumps,
+  #                       decode=json.loads)
 
 
 
