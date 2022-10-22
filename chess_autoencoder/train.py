@@ -57,6 +57,18 @@ def create_dataset(fn):
   ds = ds.prefetch(AUTOTUNE)
   return ds
 
+# @tf.function
+def train_step(x, autoencoder, loss_fn, optimizer):
+  fx = tf.reshape(x, (FLAGS.batch, FLAT_SHAPE))
+  with tf.GradientTape() as tape:
+    y = autoencoder(x, training=True)
+    loss_value = loss_fn(y, fx)
+
+  trainable_vars = autoencoder.trainable_variables
+  grads = tape.gradient(loss_value, trainable_vars)
+  optimizer.apply_gradients(zip(grads, trainable_vars))
+  return loss_value, fx, y
+
 
 def train(autoencoder, ds):
   optimizer = Adam(learning_rate=FLAGS.lr)
@@ -67,14 +79,7 @@ def train(autoencoder, ds):
   bin_acc_tracker = BinaryAccuracy(name='bin_acc')
 
   for step, x in enumerate(ds):
-    fx = tf.reshape(x, (FLAGS.batch, FLAT_SHAPE))
-    with tf.GradientTape() as tape:
-      y = autoencoder(x, training=True)
-      loss_value = loss_fn(y, fx)
-
-    trainable_vars = autoencoder.trainable_variables
-    grads = tape.gradient(loss_value, trainable_vars)
-    optimizer.apply_gradients(zip(grads, trainable_vars))
+    loss_value, fx, y = train_step(x, autoencoder, loss_fn, optimizer)
 
     loss_tracker.update_state(values=loss_value)
     acc_tracker.update_state(y_true=fx, y_pred=y)
@@ -108,22 +113,22 @@ def main(argv):
 
   train(autoencoder, ds)
 
-  print('done training')
-  n = 0
-  for b in create_dataset(fn):
-    n += 1
-    autoencoder(b, training=False)
-    tot = n * FLAGS.batch
-    if tot % 1000 == 0:
-      print(n, tot)
-  print('raw')
-  n = 0
-  for enc in generate_training_data(fn):
-    n += 1
-    if n % 1000 == 0:
-      print(n)
-      embedding = autoencoder(tf.expand_dims(enc, axis=0), training=False)
-  print('done')
+  # print('done training')
+  # n = 0
+  # for b in create_dataset(fn):
+  #   n += 1
+  #   autoencoder(b, training=False)
+  #   tot = n * FLAGS.batch
+  #   if tot % 1000 == 0:
+  #     print(n, tot)
+  # print('raw')
+  # n = 0
+  # for enc in generate_training_data(fn):
+  #   n += 1
+  #   if n % 1000 == 0:
+  #     print(n)
+  #     embedding = autoencoder(tf.expand_dims(enc, axis=0), training=False)
+  # print('done')
 
 
   # rdb = sqlitedict.open(filename=FLAGS.reference,
