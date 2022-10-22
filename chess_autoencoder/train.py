@@ -57,7 +57,7 @@ def create_dataset(fn):
   ds = ds.prefetch(AUTOTUNE)
   return ds
 
-# @tf.function
+@tf.function
 def train_step(x, autoencoder, loss_fn, optimizer):
   fx = tf.reshape(x, (FLAGS.batch, FLAT_SHAPE))
   with tf.GradientTape() as tape:
