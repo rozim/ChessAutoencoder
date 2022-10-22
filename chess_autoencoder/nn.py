@@ -1,9 +1,14 @@
-import tensorflow as tf
 import json
-import sqlitedict
-import numpy as np
 import sys
 import os
+import heapq
+
+import tensorflow as tf
+
+
+import sqlitedict
+import numpy as np
+
 import chess
 from encode import encode_board, SHAPE, FLAT_SHAPE
 
@@ -29,6 +34,7 @@ xfen = FEN
 # xembedding = None
 xbest = None
 xworst = None
+h = []
 
 tot = len(db)
 for row, (fen, embedding) in enumerate(db.items()):
@@ -42,6 +48,7 @@ for row, (fen, embedding) in enumerate(db.items()):
   embedding = np.array(embedding)
   dist = np.linalg.norm(embedding - xembedding)
 
+  heapq.heappush(h, (dist, fen))
   if xbest is None or dist < xbest:
     print('best: ', fen, dist)
     xbest = dist
@@ -50,3 +57,9 @@ for row, (fen, embedding) in enumerate(db.items()):
     xworst = dist
   if row % 5000 == 0:
     print(row, f'{100.0 * row / tot:.1f}%')
+
+print()
+print('\n'.join(str(foo) for foo in heapq.nlargest(10, h)))
+print()
+print('\n'.join(str(foo) for foo in heapq.nsmallest(10, h)))
+print()
