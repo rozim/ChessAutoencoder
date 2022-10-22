@@ -5,6 +5,8 @@ import json
 
 import chess
 
+import numpy as np
+
 from absl import app
 from absl import flags
 
@@ -44,6 +46,15 @@ def generate_training_data(fn):
       fen, _ = line.split(',')
       board = chess.Board(fen)
       yield encode_board(board)
+
+
+def generate_training_data2(fn):
+  print(f'Open {fn}')
+  with open(fn, 'r') as f:
+    for line in f.readlines():
+      fen, _ = line.split(',')
+      board = chess.Board(fen)
+      yield encode_board(board), fen
 
 
 def create_dataset(fn):
@@ -93,9 +104,11 @@ def train(autoencoder, ds):
 
 
 def main(argv):
-  autoencoder, _ = create_models(FLAGS.dim)
+  autoencoder, encoder = create_models(FLAGS.dim)
   autoencoder.summary()
-
+  print('#')
+  encoder.summary()
+  print('#')
   fn = argv[1:][0]
 
   n = 0
@@ -113,28 +126,40 @@ def main(argv):
 
   train(autoencoder, ds)
 
-  # print('done training')
-  # n = 0
-  # for b in create_dataset(fn):
-  #   n += 1
-  #   autoencoder(b, training=False)
-  #   tot = n * FLAGS.batch
-  #   if tot % 1000 == 0:
-  #     print(n, tot)
-  # print('raw')
-  # n = 0
-  # for enc in generate_training_data(fn):
-  #   n += 1
-  #   if n % 1000 == 0:
-  #     print(n)
-  #     embedding = autoencoder(tf.expand_dims(enc, axis=0), training=False)
-  # print('done')
+  db = sqlitedict.open(filename='embeddings.sqlite',
+                       flag='c',
+                       encode=json.dumps,
+                       decode=json.loads)
+  stack = []
+  fens = []
+  n = 0
+  for encoded, fen in generate_training_data2(fn):
+    if n % 5000 == 0:
+      print('ex', n)
+    n += 1
+    stack.append(encoded)
+    fens.append(fen)
+    if len(stack) == FLAGS.batch:
+      batch = np.stack(stack)
+      embeddings = encoder(batch, training=False)
+
+      for k, v in zip(fens, tf.unstack(embeddings)):
+        db[k] = v.numpy().tolist()
+      stack = []
+      fens = []
+
+  if len(stack) > 0:
+    batch = np.stack(stack)
+    embeddings = encoder(batch, training=False)
+    for k, v in zip(fens, tf.unstack(embeddings)):
+      db[k] = v.numpy().tolist()
+
+  db.commit()
+  db.close()
+  print('done')
 
 
-  # rdb = sqlitedict.open(filename=FLAGS.reference,
-  #                       flag='c',
-  #                       encode=json.dumps,
-  #                       decode=json.loads)
+
 
 
 
