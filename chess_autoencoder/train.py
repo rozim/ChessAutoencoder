@@ -99,16 +99,7 @@ def train(autoencoder, ds):
 
   loss_tracker = Mean(name='loss')
   bin_acc_tracker = BinaryAccuracy()
-  xxx_acc_tracker = BinaryAccuracy()
-  rnd_tracker = MeanSquaredError()
-  zero_tracker = MeanSquaredError()
-  one_tracker = MeanSquaredError()
-  avg_tracker = MeanSquaredError()
-  metrics = [loss_tracker, bin_acc_tracker, rnd_tracker,
-             zero_tracker,
-             one_tracker,
-             xxx_acc_tracker,
-             avg_tracker]
+  metrics = [loss_tracker, bin_acc_tracker]
 
 
   for step, x in enumerate(ds):
@@ -117,22 +108,8 @@ def train(autoencoder, ds):
     loss_tracker.update_state(values=loss_value)
     bin_acc_tracker.update_state(y_true=fx, y_pred=y)
 
-    rnd = tf.random.uniform(y.shape, minval=0.0, maxval=1.0)
-
-    rnd_tracker.update_state(y_true=fx, y_pred=rnd)
-
-
-
-    one_tracker.update_state(y_true=fx, y_pred=tf.ones_like(y))
-    zero_tracker.update_state(y_true=fx, y_pred=tf.zeros_like(y))
-
-    avg = tf.reduce_sum(y, axis=0) / y.shape[0]
-    avg_tracker.update_state(y_true=fx, y_pred=avg)
-
-    xxx_acc_tracker.update_state(y_true=fx, y_pred=avg)
-
     if step % FLAGS.log_freq == 0:
-      print(f'{step:6d} {loss_tracker.result().numpy():.6f} {bin_acc_tracker.result().numpy():.8f} xxx={xxx_acc_tracker.result().numpy():.4f} r={rnd_tracker.result().numpy():.4f} one={one_tracker.result().numpy():.4f} zero={zero_tracker.result().numpy():.4f} avg={avg_tracker.result().numpy():.4f}')
+      print(f'{step:6d} {loss_tracker.result().numpy():.6f} {bin_acc_tracker.result().numpy():.8f}')
 
       for m in metrics:
         m.reset_state()
