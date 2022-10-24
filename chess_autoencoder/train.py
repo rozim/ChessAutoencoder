@@ -5,6 +5,7 @@ import logging
 import os
 import sys
 import warnings
+import time
 
 import chess
 
@@ -22,8 +23,9 @@ from tensorflow.keras import Model, Input
 from tensorflow.keras.layers import Flatten, Reshape, Input, Dense
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.losses import BinaryCrossentropy
+from tensorflow.keras.losses import MeanSquaredError as MseLoss
 
-from tensorflow.keras.metrics import Mean, Accuracy, BinaryAccuracy
+from tensorflow.keras.metrics import Mean, BinaryAccuracy, MeanSquaredError
 
 from encode import encode_board, SHAPE, FLAT_SHAPE
 from model import create_models, create_conv_models
@@ -76,6 +78,7 @@ def create_dataset(fn):
   ds = ds.prefetch(AUTOTUNE)
   return ds
 
+
 @tf.function
 def train_step(x, autoencoder, loss_fn, optimizer):
   fx = tf.reshape(x, (FLAGS.batch, FLAT_SHAPE))
@@ -91,24 +94,34 @@ def train_step(x, autoencoder, loss_fn, optimizer):
 
 def train(autoencoder, ds):
   optimizer = Adam(learning_rate=FLAGS.lr)
-  loss_fn = BinaryCrossentropy()
+  loss_fn = MseLoss()
 
   loss_tracker = Mean(name='loss')
-  acc_tracker = Accuracy(name='acc')
   bin_acc_tracker = BinaryAccuracy(name='bin_acc')
 
   for step, x in enumerate(ds):
     loss_value, fx, y = train_step(x, autoencoder, loss_fn, optimizer)
 
     loss_tracker.update_state(values=loss_value)
-    acc_tracker.update_state(y_true=fx, y_pred=y)
     bin_acc_tracker.update_state(y_true=fx, y_pred=y)
 
     if step % FLAGS.log_freq == 0:
-      print(f'{step:6d} {loss_tracker.result().numpy():.4f} {acc_tracker.result().numpy():.4f} {bin_acc_tracker.result().numpy():.4f}')
+      print(f'{step:6d} {loss_tracker.result().numpy():.6f} {bin_acc_tracker.result().numpy():.8f}')
       loss_tracker.reset_state()
-      acc_tracker.reset_state()
       bin_acc_tracker.reset_state()
+
+
+def calc_metrics(autoencoder, ds):
+  bin_acc_tracker = BinaryAccuracy()
+  mse_tracker = MeanSquaredError()
+  for x in ds:
+    fx = tf.reshape(x, (FLAGS.batch, FLAT_SHAPE))
+    y = autoencoder(x, training=False)
+    bin_acc_tracker.update_state(y_true=fx, y_pred=y)
+    mse_tracker.update_state(y_true=fx, y_pred=y)
+
+  return (mse_tracker.result().numpy(),
+          bin_acc_tracker.result().numpy())
 
 
 def main(argv):
@@ -140,8 +153,14 @@ def main(argv):
   if FLAGS.repeat > 1:
     ds = ds.repeat(FLAGS.repeat)
 
+  print()
   train(autoencoder, ds)
 
+  print()
+  print('Metrics on whole data set')
+  mse, bin_acc = calc_metrics(autoencoder, create_dataset(fn))
+  print(f'MSE           : {mse:.6f}')
+  print(f'BinaryAccuracy: {bin_acc:.6f}')
 
   autoencoder.save(f'autoencoder{suffix}.model')
   encoder.save(f'encoder{suffix}.model')
