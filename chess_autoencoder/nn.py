@@ -37,6 +37,9 @@ xworst = None
 h = []
 
 tot = len(db)
+
+xtot = None
+xtotn = 0
 for row, (fen, embedding) in enumerate(db.items()):
   # if xfen is None:
   #   xfen = fen
@@ -46,6 +49,15 @@ for row, (fen, embedding) in enumerate(db.items()):
   #   continue
 
   embedding = np.array(embedding)
+  if xtot is None:
+    xtot = embedding
+  else:
+    xtot += embedding
+  print('CUR: ', type(embedding), embedding)
+  xtotn += 1
+  if xtotn == 10:
+    print('AVG: ', xtot / xtotn)
+    break
   dist = np.linalg.norm(embedding - xembedding)
 
   heapq.heappush(h, (dist, fen))
