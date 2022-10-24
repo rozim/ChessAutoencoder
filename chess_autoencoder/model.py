@@ -34,7 +34,6 @@ def create_conv_models(encoding_dim=32,
   act_fn = 'relu'
   input_img = Input(shape=SHAPE)
 
-
   x = Reshape(SHAPE_2D)(input_img)
   # shape: 12,       8, 8
   #        channels, x, y
@@ -65,7 +64,8 @@ def create_conv_models(encoding_dim=32,
 
 
   flat = Flatten()(x)
-  encoded = Dense(encoding_dim, activation='relu')(flat)
+  # tanh -> embeddings should be 0..1
+  encoded = Dense(encoding_dim, activation='tanh')(flat)
 
   x = encoded
   x = Dense(64)(x)
@@ -77,6 +77,7 @@ def create_conv_models(encoding_dim=32,
     x = Activation(act_fn)(x)
 
   x = Flatten()(x)
+  # sigmoid -> we know the input is in 0..1
   decoded = Dense(FLAT_SHAPE, activation='sigmoid')(x)
 
   encoder = Model(inputs=input_img, outputs=encoded, name='encoder')
