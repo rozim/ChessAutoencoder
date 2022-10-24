@@ -8,6 +8,7 @@ from absl import app
 from absl import flags
 
 SHAPE = (12, 64)
+SHAPE_2D = (12, 8, 8)
 FLAT_SHAPE = 12 * 64
 
 # P2I {
