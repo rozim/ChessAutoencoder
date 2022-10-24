@@ -37,10 +37,17 @@ flags.DEFINE_float('lr', 0.001, '')
 flags.DEFINE_integer('steps', 100, '')
 flags.DEFINE_integer('log_freq', 10, '')
 flags.DEFINE_integer('repeat', 0, '')
-flags.DEFINE_integer('shuffle', 1024, '')
+flags.DEFINE_integer('shuffle', -10, 'Negative for factor on batch size')
 
 flags.DEFINE_integer('num_layers', 2, '')
 flags.DEFINE_integer('num_filters', 12, '')
+flags.DEFINE_string('act_fn', 'relu', '')
+flags.DEFINE_string('kernel', 'glorot_uniform', '')
+
+# random_{uniform,normal}
+# glorot_{uniform,normal}
+# he_{uniform,normal}
+# orthogonal
 
 flags.DEFINE_string('suffix', '', '')
 
@@ -72,8 +79,11 @@ def create_dataset(fn):
   ds = tf.data.Dataset.from_generator(gen,
                                       output_signature=(
                                         tf.TensorSpec(shape=SHAPE, dtype=tf.float32)))
-  if FLAGS.shuffle:
-    ds = ds.shuffle(FLAGS.shuffle)
+  if FLAGS.shuffle != 0:
+    if FLAGS.shuffle > 0:
+      ds = ds.shuffle(FLAGS.shuffle)
+    else:
+      ds = ds.shuffle(-FLAGS.shuffle * FLAGS.batch)
   ds = ds.batch(FLAGS.batch, drop_remainder=True)
   ds = ds.prefetch(AUTOTUNE)
   return ds
@@ -136,10 +146,14 @@ def main(argv):
 
   autoencoder, encoder = create_conv_models(FLAGS.dim,
                                             num_filters=FLAGS.num_filters,
-                                            num_layers=FLAGS.num_layers)
+                                            num_layers=FLAGS.num_layers,
+                                            act_fn=FLAGS.act_fn,
+                                            kernel=FLAGS.kernel)
 
   if FLAGS.suffix:
     suffix = f'-{FLAGS.suffix}'
+  else:
+    suffix = ''
 
   fn = os.path.join(f'model-summary{suffix}.txt')
   with open(fn, 'w') as f:
