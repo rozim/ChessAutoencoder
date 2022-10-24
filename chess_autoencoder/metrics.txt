@@ -1,0 +1,32 @@
+python train.py --dim=8 --batch=1024 --steps=100 --shuffle=10240 --suffix=foo ../data/twic-ply20.txt
+
+MSE  (MeanSquaredError) with
+
+r = random uniform
+one = all 1.0
+zero = all 0.0
+avg = average of batch (size 1024)
+
+       MSE      Binary     Rnd      1.0        0.0         Batch
+       Loss     Accuracy                                   Avg
+     0 0.274869 0.50243378 r=0.3332 one=0.9616 zero=0.0384 avg=0.2697
+    10 0.078800 0.91628522 r=0.3331 one=0.9617 zero=0.0383 avg=0.0781
+    20 0.021928 0.97169185 r=0.3332 one=0.9616 zero=0.0384 avg=0.0220
+    30 0.020907 0.97189933 r=0.3331 one=0.9616 zero=0.0384 avg=0.0210
+    40 0.020486 0.97266316 r=0.3331 one=0.9616 zero=0.0384 avg=0.0209
+    50 0.020092 0.97365242 r=0.3332 one=0.9616 zero=0.0384 avg=0.0210
+    60 0.019656 0.97419107 r=0.3332 one=0.9616 zero=0.0384 avg=0.0209
+    70 0.019255 0.97481072 r=0.3331 one=0.9617 zero=0.0383 avg=0.0208
+    80 0.019034 0.97507459 r=0.3332 one=0.9617 zero=0.0383 avg=0.0208
+    90 0.018619 0.97579783 r=0.3331 one=0.9617 zero=0.0383 avg=0.0208
+
+So with dim=8 we can beat batch avg slightly
+
+With larger batch(10240) and repeat=4 the final output shows that
+we still learn a bit better than batch avg
+    80 0.017290 0.97774994 r=0.3333 one=0.9617 zero=0.0383 avg=0.0208
+
+rnd binary accuracy: 0.5    (mse: 0.33)
+one                  0.383  (mse: 0.9617)
+zeros                0.9617 (mse: 0.384)
+batch                0.9714 (mse: 0.0221)
