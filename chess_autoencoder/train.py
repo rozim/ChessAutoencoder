@@ -44,7 +44,6 @@ flags.DEFINE_integer('num_filters', 20, '')
 flags.DEFINE_string('act_fn', 'relu', '')
 flags.DEFINE_string('kernel', 'he_normal', '')
 
-flags.DEFINE_integer('n', 1, 'Run train and eval in a loop')
 flags.DEFINE_integer('eval_take', 0, 'Limit eval set')
 
 flags.DEFINE_bool('save', False, '')
@@ -152,12 +151,6 @@ def train_and_evaluate(fn):
                                             act_fn=FLAGS.act_fn,
                                             kernel=FLAGS.kernel)
 
-  autoencoder, encoder = create_conv_models(FLAGS.dim,
-                                            num_filters=FLAGS.num_filters,
-                                            num_layers=FLAGS.num_layers,
-                                            act_fn=FLAGS.act_fn,
-                                            kernel=FLAGS.kernel)
-
   if FLAGS.save:
     with open(f'model-summary{suffix}.txt', 'w') as f:
       with redirect_stdout(f):
@@ -203,8 +196,7 @@ def main(argv):
   warnings.filterwarnings('ignore', category=Warning)
   fn = argv[1:][0]
 
-  for _ in range(FLAGS.n):
-    train_and_evaluate(fn)
+  train_and_evaluate(fn)
 
 
 if __name__ == "__main__":
