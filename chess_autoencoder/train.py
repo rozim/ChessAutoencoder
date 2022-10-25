@@ -31,23 +31,30 @@ from encode import encode_board, SHAPE, FLAT_SHAPE
 from model import create_models, create_conv_models
 
 FLAGS = flags.FLAGS
-flags.DEFINE_integer('dim', 32, '')
-flags.DEFINE_integer('batch', 16, '')
+flags.DEFINE_integer('dim', 8, '')
+flags.DEFINE_integer('batch', 1024, '')
 flags.DEFINE_float('lr', 0.001, '')
 flags.DEFINE_integer('steps', 100, '')
 flags.DEFINE_integer('log_freq', 10, '')
 flags.DEFINE_integer('repeat', 0, '')
 flags.DEFINE_integer('shuffle', -10, 'Negative for factor on batch size')
 
-flags.DEFINE_integer('num_layers', 2, '')
-flags.DEFINE_integer('num_filters', 12, '')
+flags.DEFINE_integer('num_layers', 1, '')
+flags.DEFINE_integer('num_filters', 20, '')
 flags.DEFINE_string('act_fn', 'relu', '')
-flags.DEFINE_string('kernel', 'glorot_uniform', '')
+flags.DEFINE_string('kernel', 'he_normal', '')
+
+flags.DEFINE_integer('n', 1, 'Run train and eval in a loop')
+flags.DEFINE_integer('eval_take', 0, 'Limit eval set')
+
+flags.DEFINE_bool('save', False, '')
 
 # random_{uniform,normal}
 # glorot_{uniform,normal}
 # he_{uniform,normal}
 # orthogonal
+# truncated_normal
+# variance_scaling
 
 flags.DEFINE_string('suffix', '', '')
 
@@ -106,11 +113,9 @@ def train(autoencoder, ds):
   optimizer = Adam(learning_rate=FLAGS.lr)
   loss_fn = MseLoss()
 
-
   loss_tracker = Mean(name='loss')
   bin_acc_tracker = BinaryAccuracy()
   metrics = [loss_tracker, bin_acc_tracker]
-
 
   for step, x in enumerate(ds):
     loss_value, fx, y = train_step(x, autoencoder, loss_fn, optimizer)
@@ -138,11 +143,8 @@ def calc_metrics(autoencoder, ds):
           bin_acc_tracker.result().numpy())
 
 
-def main(argv):
-  tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
-  alogging.set_verbosity('error')
-  os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
-  warnings.filterwarnings('ignore', category=Warning)
+def train_and_evaluate(fn):
+  suffix = f'-{FLAGS.suffix}' if FLAGS.suffix else ''
 
   autoencoder, encoder = create_conv_models(FLAGS.dim,
                                             num_filters=FLAGS.num_filters,
@@ -150,19 +152,18 @@ def main(argv):
                                             act_fn=FLAGS.act_fn,
                                             kernel=FLAGS.kernel)
 
-  if FLAGS.suffix:
-    suffix = f'-{FLAGS.suffix}'
-  else:
-    suffix = ''
+  autoencoder, encoder = create_conv_models(FLAGS.dim,
+                                            num_filters=FLAGS.num_filters,
+                                            num_layers=FLAGS.num_layers,
+                                            act_fn=FLAGS.act_fn,
+                                            kernel=FLAGS.kernel)
 
-  fn = os.path.join(f'model-summary{suffix}.txt')
-  with open(fn, 'w') as f:
-    with redirect_stdout(f):
-      autoencoder.summary()
-      print('#')
-      encoder.summary()
-
-  fn = argv[1:][0]
+  if FLAGS.save:
+    with open(f'model-summary{suffix}.txt', 'w') as f:
+      with redirect_stdout(f):
+        autoencoder.summary()
+        print('#')
+        encoder.summary()
 
   ds = create_dataset(fn)
 
@@ -172,16 +173,38 @@ def main(argv):
     ds = ds.repeat(FLAGS.repeat)
 
   print()
+  t1 = time.time()
   train(autoencoder, ds)
+  dt_train = time.time() - t1
+
+  if FLAGS.save:
+    autoencoder.save(f'autoencoder{suffix}.model')
+    encoder.save(f'encoder{suffix}.model')
 
   print()
   print('Metrics on whole data set')
-  mse, bin_acc = calc_metrics(autoencoder, create_dataset(fn))
+  t1 = time.time()
+  ds = create_dataset(fn)
+  if FLAGS.eval_take:
+    ds = ds.take(FLAGS.eval_take)
+  mse, bin_acc = calc_metrics(autoencoder, ds)
+  dt_eval = time.time() - t1
   print(f'MSE           : {mse:.6f}')
   print(f'BinaryAccuracy: {bin_acc:.6f}')
+  print(f'Train         : {dt_train:.1f}s')
+  print(f'Eval          : {dt_eval:.1f}s')
 
-  autoencoder.save(f'autoencoder{suffix}.model')
-  encoder.save(f'encoder{suffix}.model')
+
+
+def main(argv):
+  tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
+  alogging.set_verbosity('error')
+  os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+  warnings.filterwarnings('ignore', category=Warning)
+  fn = argv[1:][0]
+
+  for _ in range(FLAGS.n):
+    train_and_evaluate(fn)
 
 
 if __name__ == "__main__":
