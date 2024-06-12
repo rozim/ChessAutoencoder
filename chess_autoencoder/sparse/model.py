@@ -1,39 +1,48 @@
+import functools
 import time
-
-from ml_collections import config_dict
-
-from absl import app
-from absl import flags
-from absl import logging
+import warnings
 
 import flax
-from flax import linen as nn
-from flax.training import common_utils
-from flax import jax_utils
-from flax.training import train_state
-from flax import struct
-from flax.linen import initializers
-
 import jax
 import jax.numpy as jnp
-from jax import vmap, grad, jit, lax
 import jax.random
-
-from clu import metrics
-
 import optax
+import tensorflow as tf
+from absl import app, flags, logging
+from clu import metrics
+from flax import jax_utils
+from flax import linen as nn
+from flax import struct
+from flax.linen import initializers
+from flax.training import common_utils, train_state
+from jax import grad, jit, lax, vmap
+from ml_collections import config_dict
 
-import warnings
 warnings.simplefilter('once')
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
-from schema import TRANSFORMER_LENGTH, TRANSFORMER_SHAPE, TRANSFORMER_VOCABULARY
+from schema import (TRANSFORMER_FEATURES, TRANSFORMER_LENGTH,
+                    TRANSFORMER_SHAPE, TRANSFORMER_VOCABULARY)
 
 
 def get_config() -> config_dict.ConfigDict:
   config = config_dict.ConfigDict()
   return config
 
+# class Encoder(nn.Module):
+#   hidden_size: int = 3
+#   embedding_size: int = 7
+#   num_classes: int = TRANSFORMER_VOCABULARY
+
+#   def setup(self):
+#     self.embedding = nn.Embed(num_embeddings=self.num_classes, features=self.embedding_size)
+#     self.dense = nn.Dense(self.hidden_size)
+
+#   def __call__(self, x):
+#     x = self.embedding(x)
+#     x = jnp.reshape(x, (x.shape[0], -1))  # Flattening using JAX's reshape
+#     x = self.dense(x)
+#     return x
 
 class Encoder(nn.Module):
   latent_dim: int = 3
@@ -41,10 +50,14 @@ class Encoder(nn.Module):
 
   @nn.compact
   def __call__(self, x):
+    if x.dtype == jnp.int64:
+      x = jnp.asarray(x, dtype=jnp.int32)
+
     pos_emb = self.param(
       'pos_emb',
       initializers.zeros_init(),
-      (TRANSFORMER_LENGTH, self.embed_width), jnp.float32,
+      (1, TRANSFORMER_LENGTH, self.embed_width),
+      jnp.float32,
     )
 
     x = nn.Embed(num_embeddings=TRANSFORMER_VOCABULARY,
@@ -67,7 +80,6 @@ def main(argv):
   #m = Metrics()
   rng = jax.random.PRNGKey(int(time.time()))
   enc = Encoder()
-  sample_x = jnp.ones((1,) + TRANSFORMER_SHAPE, jnp.int32)
   sample_x = jax.random.randint(key=rng,
                                 shape=((1,) + TRANSFORMER_SHAPE),
                                 minval=0,
@@ -81,15 +93,27 @@ def main(argv):
   print('enc: ', enc)
   print()
   batch = sample_x
-  # batch = jax.random.randint(key=rng,
-  #                            shape=((1,) + TRANSFORMER_SHAPE),
-  #                            minval=0,
-  #                            maxval=TRANSFORMER_VOCABULARY,
-  #                            dtype=jnp.int32)
 
   output = enc.apply(params, batch)
   print('output:', output.shape)
   print('output:', output)
+
+  print('read')
+  ds = tf.data.TFRecordDataset(['data/mega-2400-00000-of-00100'], 'ZLIB')
+  ds = ds.batch(4)
+  ds = ds.map(functools.partial(tf.io.parse_example, features=TRANSFORMER_FEATURES))
+  ds = ds.as_numpy_iterator()
+  for batch in iter(ds):
+    #print('board', batch['board'], type(batch['board']), batch['board'].dtype,
+    #'bs: ', batch['board'].shape)
+
+    #print('label', batch['label'])
+    output = enc.apply(params, batch['board'])
+    print('output:', output.shape)
+    print('output:', output)
+    break
+
+
 
 
 
