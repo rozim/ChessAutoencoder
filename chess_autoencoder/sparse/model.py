@@ -28,25 +28,7 @@ from chex import assert_rank, assert_shape
 from schema import (LABEL_VOCABULARY, TRANSFORMER_FEATURES, TRANSFORMER_LENGTH,
                     TRANSFORMER_SHAPE, TRANSFORMER_VOCABULARY)
 
-config_flags.DEFINE_config_file(
-    'config',
-    None,
-    'File path to the training hyperparameter configuration.',
-    lock_config=True,
-)
-def get_config() -> config_dict.ConfigDict:
-  config = config_dict.ConfigDict()
-  return config
 
-
-@struct.dataclass
-class MyNewMetrics(metrics.Collection):
-  accuracy: metrics.Accuracy
-  loss: metrics.Average.from_output('loss')
-
-
-class MyNewTrainState(train_state.TrainState):
-  metrics: MyNewMetrics
 
 
 class Encoder(nn.Module):
@@ -238,35 +220,22 @@ def main(argv):
 
     optimizer = optax.adamw(learning_rate=0.1)
 
-    if False:
-      ts_ae = MyNewTrainState.create(
-        apply_fn=ae.apply,
-        params=ae_variables['params'],
-        tx=optimizer,
-        metrics=MyNewMetrics.empty())
+    ts_ae = train_state.TrainState.create(
+      apply_fn=ae.apply,
+      tx=optimizer,
+      params=ae_variables['params'])
+    ts_ae, metrics = old_train_step(ts_ae, batch['board'], labels)
 
-      print('ts/before', ts_ae.metrics.compute())
-      for _ in range(20):
-        ts_ae, new_train_step(ts_ae, batch['board'], labels)
-        ts_ae = new_compute_metrics(state=ts_ae, batch=batch)
-        print('ts/after', ts_ae.metrics.compute())
-    else:
-      ts_ae = train_state.TrainState.create(
-        apply_fn=ae.apply,
-        tx=optimizer,
-        params=ae_variables['params'])
+    ar = []
+    ar.append(metrics)
+    print('ts/after', ts_ae)
+    print('metrics: ', metrics)
+    print('labels/99: ', labels)
+    for _ in range(10):
       ts_ae, metrics = old_train_step(ts_ae, batch['board'], labels)
-
-      ar = []
-      ar.append(metrics)
-      print('ts/after', ts_ae)
       print('metrics: ', metrics)
-      print('labels/99: ', labels)
-      for _ in range(10):
-        ts_ae, metrics = old_train_step(ts_ae, batch['board'], labels)
-        print('metrics: ', metrics)
-        ar.append(metrics)
-      print('acc: ', old_accumulate_metrics(ar))
+      ar.append(metrics)
+    print('acc: ', old_accumulate_metrics(ar))
 
     break
 
