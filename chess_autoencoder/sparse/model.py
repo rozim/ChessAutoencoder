@@ -7,6 +7,7 @@ import flax
 import jax
 import jax.numpy as jnp
 import jax.random
+import numpy as np
 import optax
 import tensorflow as tf
 from absl import app, flags, logging
@@ -17,20 +18,35 @@ from flax import struct
 from flax.linen import initializers
 from flax.training import common_utils, train_state
 from jax import grad, jit, lax, vmap
-from ml_collections import config_dict
+from ml_collections import config_dict, config_flags
 
 warnings.simplefilter('once')
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
-from schema import (TRANSFORMER_FEATURES, TRANSFORMER_LENGTH,
-                    TRANSFORMER_SHAPE, TRANSFORMER_VOCABULARY, LABEL_VOCABULARY)
+from chex import assert_rank, assert_shape
 
-from chex import assert_shape, assert_rank
+from schema import (LABEL_VOCABULARY, TRANSFORMER_FEATURES, TRANSFORMER_LENGTH,
+                    TRANSFORMER_SHAPE, TRANSFORMER_VOCABULARY)
 
-
+config_flags.DEFINE_config_file(
+    'config',
+    None,
+    'File path to the training hyperparameter configuration.',
+    lock_config=True,
+)
 def get_config() -> config_dict.ConfigDict:
   config = config_dict.ConfigDict()
   return config
+
+
+@struct.dataclass
+class MyNewMetrics(metrics.Collection):
+  accuracy: metrics.Accuracy
+  loss: metrics.Average.from_output('loss')
+
+
+class MyNewTrainState(train_state.TrainState):
+  metrics: MyNewMetrics
 
 
 class Encoder(nn.Module):
@@ -80,11 +96,8 @@ class Decoder(nn.Module):
     assert_shape(x, (None, self.latent_dim))
 
     x = nn.Dense(name='decoding', features=(TRANSFORMER_LENGTH * self.embed_width))(x)
-    print('x1', x.shape)
     x = x.reshape((x.shape[0], TRANSFORMER_LENGTH, self.embed_width))
-    print('x2', x.shape)
     x = nn.Dense(name='logits', features=(LABEL_VOCABULARY))(x)
-    print('x3', x.shape)
     assert_shape(x, (None, TRANSFORMER_LENGTH, LABEL_VOCABULARY))
     return x
 
@@ -101,15 +114,35 @@ class AutoEncoder(nn.Module):
     return y
 
 
-def compute_metrics(*, logits: jnp.ndarray, labels: jnp.ndarray) -> Dict[str, jnp.ndarray]:
+
+def old_compute_metrics(*, logits: jnp.ndarray, labels: jnp.ndarray) -> Dict[str, jnp.ndarray]:
   accuracy = jnp.mean(jnp.argmax(logits, -1) == labels)
   metrics = {
       'accuracy': accuracy,
   }
   return metrics
 
+
+def old_accumulate_metrics(metrics):
+  metrics = jax.device_get(metrics)
+  return {
+    k: np.mean([metric[k] for metric in metrics])
+    for k in metrics[0]
+  }
+
 @jax.jit
-def train_step(
+def new_compute_metrics(*, state, batch):
+  logits = state.apply_fn({'params': state.params}, batch['board'])
+  loss = optax.softmax_cross_entropy_with_integer_labels(
+        logits=logits, labels=batch['label']).mean()
+  metric_updates = state.metrics.single_from_model_output(
+    logits=logits, labels=batch['label'], loss=loss)
+  metrics = state.metrics.merge(metric_updates)
+  state = state.replace(metrics=metrics)
+  return state
+
+@jax.jit
+def old_train_step(
     state: train_state.TrainState,
     x: jnp.ndarray,
     label: jnp.ndarray
@@ -122,56 +155,50 @@ def train_step(
   gradient_fn = jax.value_and_grad(_loss_fn, has_aux=True)
   (loss, logits), grads = gradient_fn(state.params)
   state = state.apply_gradients(grads=grads)
-  metrics = compute_metrics(logits=logits, labels=label)
+  metrics = old_compute_metrics(logits=logits, labels=label)
   metrics['loss'] = loss
   return state, metrics
+
+@jax.jit
+def new_train_step(
+    state: MyNewTrainState,
+    x: jnp.ndarray,
+    label: jnp.ndarray
+):
+  def _loss_fn(params):
+    logits = state.apply_fn({'params': params}, x)
+    loss = optax.softmax_cross_entropy_with_integer_labels(logits=logits, labels=label)
+    return loss.mean()
+
+  grad_fn = jax.grad(_loss_fn)
+  grads = grad_fn(state.params)
+  print("grads:", grads)
+  state = state.apply_gradients(grads=grads)
+  return state
+
 
 def main(argv):
   print(get_config())
   latent_dim = 2
   embed_width = 3
-  #t = TrainState()
-  #m = Metrics()
   rng = jax.random.PRNGKey(int(time.time()))
-  rng, rnd_enc, rnd_dec, rnd_ae = jax.random.split(rng, num=4)
-  enc = Encoder(latent_dim=latent_dim, embed_width=embed_width)
-  dec = Decoder(latent_dim=latent_dim, embed_width=embed_width)
+  rng, rnd_ae = jax.random.split(rng, num=2)
   ae = AutoEncoder(latent_dim=latent_dim, embed_width=embed_width)
   sample_x = jax.random.randint(key=rng,
                                 shape=((1,) + TRANSFORMER_SHAPE),
                                 minval=0,
                                 maxval=TRANSFORMER_VOCABULARY,
                                 dtype=jnp.int32)
-  sample_z = jax.random.uniform(key=rng,
-                                shape=(1, latent_dim),
-                                minval=-1.0,
-                                maxval=1.0,
-                                dtype=jnp.float32)
 
-  enc_variables = enc.init(rnd_enc, sample_x)
-  print('enc_variables: ', enc_variables)
-  dec_variables = dec.init(rnd_dec, sample_z)
-  print('dec_variables: ', dec_variables)
+
   ae_variables = ae.init(rnd_ae, sample_x)
   print('ae_variables: ', ae_variables)
   print()
-  print(enc.tabulate(rnd_enc, sample_x))
-  print()
-  print(dec.tabulate(rnd_dec, sample_z))
-  print()
   print(ae.tabulate(rnd_ae, sample_x))
-  print()
-  print('enc: ', enc)
-  print()
-  print('dec: ', dec)
   print()
   print('ae: ', ae)
   print()
   batch = sample_x
-
-  output = enc.apply(enc_variables, batch)
-  print('output:', output.shape)
-  print('output:', output)
 
   print('read')
   batch_size = 4
@@ -180,53 +207,66 @@ def main(argv):
   ds = ds.map(functools.partial(tf.io.parse_example, features=TRANSFORMER_FEATURES))
   ds = ds.as_numpy_iterator()
   for batch in iter(ds):
-    #print('board', batch['board'], type(batch['board']), batch['board'].dtype,
-    #'bs: ', batch['board'].shape)
+    logits = ae.apply(ae_variables, batch['board'])
+    print('logits:', logits.shape)
+    print('logits:', logits)
 
-    #print('label', batch['label'])
-    output = enc.apply(enc_variables, batch['board'])
-    print('output:', output.shape)
-    print('output:', output)
-
-    output2 = dec.apply(dec_variables, output)
-    print('output2:', output2.shape)
-    print('output2:', output2)
+    batch['label'] = batch['label'].reshape([batch_size, 1])
     labels = batch['label']
-    labels = batch['label'].reshape([batch_size, 1])
-
     print('labels:', labels.shape)
     print('labels/1:', labels)
     print('labels/2:', labels[..., None])
-    print('max', jnp.max(output2, axis=-1, keepdims=True))
 
-
-
-    logits = output2
-    logits_max = jnp.max(logits, axis=-1, keepdims=True)
-    print('z1', logits_max)
-    logits -= jax.lax.stop_gradient(logits_max)
-    print('z2', logits)
-    print('z3/0', logits.shape, labels[..., None].shape)
-    label_logits = jnp.take_along_axis(logits, labels[..., None], axis=-1)[..., 0]
-    print('z3/a', label_logits)
-    print('z3/b', jnp.take_along_axis(logits, labels[..., None], axis=-1))
-    log_normalizers = jnp.log(jnp.sum(jnp.exp(logits), axis=-1))
-    print('z4', log_normalizers)
+    # print('max', jnp.max(output2, axis=-1, keepdims=True))
+    # logits = output2
+    # logits_max = jnp.max(logits, axis=-1, keepdims=True)
+    # print('z1', logits_max)
+    # logits -= jax.lax.stop_gradient(logits_max)
+    # print('z2', logits)
+    # print('z3/0', logits.shape, labels[..., None].shape)
+    # label_logits = jnp.take_along_axis(logits, labels[..., None], axis=-1)[..., 0]
+    # print('z3/a', label_logits)
+    # print('z3/b', jnp.take_along_axis(logits, labels[..., None], axis=-1))
+    # log_normalizers = jnp.log(jnp.sum(jnp.exp(logits), axis=-1))
+    # print('z4', log_normalizers)
 
     loss = optax.softmax_cross_entropy_with_integer_labels(
-      logits=output2,
+      logits=logits,
       labels=labels)
     print('loss=', loss)
     print('loss=', loss.mean())
 
-    optimizer = optax.adamw(learning_rate=0.01)
-    # ts_dec = train_state.TrainState.create(
-    #   apply_fn=dec.apply,
-    #   tx=optimizer,
-    #   params=dec_variables['params']
-    # )
-    #print('ts', dec_enc)
-    #state, metrics = train_step(state, batch['board'], batch['label'])
+    optimizer = optax.adamw(learning_rate=0.1)
+
+    if False:
+      ts_ae = MyNewTrainState.create(
+        apply_fn=ae.apply,
+        params=ae_variables['params'],
+        tx=optimizer,
+        metrics=MyNewMetrics.empty())
+
+      print('ts/before', ts_ae.metrics.compute())
+      for _ in range(20):
+        ts_ae, new_train_step(ts_ae, batch['board'], labels)
+        ts_ae = new_compute_metrics(state=ts_ae, batch=batch)
+        print('ts/after', ts_ae.metrics.compute())
+    else:
+      ts_ae = train_state.TrainState.create(
+        apply_fn=ae.apply,
+        tx=optimizer,
+        params=ae_variables['params'])
+      ts_ae, metrics = old_train_step(ts_ae, batch['board'], labels)
+
+      ar = []
+      ar.append(metrics)
+      print('ts/after', ts_ae)
+      print('metrics: ', metrics)
+      print('labels/99: ', labels)
+      for _ in range(10):
+        ts_ae, metrics = old_train_step(ts_ae, batch['board'], labels)
+        print('metrics: ', metrics)
+        ar.append(metrics)
+      print('acc: ', old_accumulate_metrics(ar))
 
     break
 
