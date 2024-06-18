@@ -113,17 +113,6 @@ def old_accumulate_metrics(metrics):
   }
 
 @jax.jit
-def new_compute_metrics(*, state, batch):
-  logits = state.apply_fn({'params': state.params}, batch['board'])
-  loss = optax.softmax_cross_entropy_with_integer_labels(
-        logits=logits, labels=batch['label']).mean()
-  metric_updates = state.metrics.single_from_model_output(
-    logits=logits, labels=batch['label'], loss=loss)
-  metrics = state.metrics.merge(metric_updates)
-  state = state.replace(metrics=metrics)
-  return state
-
-@jax.jit
 def old_train_step(
     state: train_state.TrainState,
     x: jnp.ndarray,
