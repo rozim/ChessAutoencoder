@@ -130,22 +130,7 @@ def old_train_step(
   metrics['loss'] = loss
   return state, metrics
 
-@jax.jit
-def new_train_step(
-    state: MyNewTrainState,
-    x: jnp.ndarray,
-    label: jnp.ndarray
-):
-  def _loss_fn(params):
-    logits = state.apply_fn({'params': params}, x)
-    loss = optax.softmax_cross_entropy_with_integer_labels(logits=logits, labels=label)
-    return loss.mean()
 
-  grad_fn = jax.grad(_loss_fn)
-  grads = grad_fn(state.params)
-  print("grads:", grads)
-  state = state.apply_gradients(grads=grads)
-  return state
 
 
 def main(argv):
