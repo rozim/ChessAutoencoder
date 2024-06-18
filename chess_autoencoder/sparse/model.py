@@ -29,8 +29,6 @@ from schema import (LABEL_VOCABULARY, TRANSFORMER_FEATURES, TRANSFORMER_LENGTH,
                     TRANSFORMER_SHAPE, TRANSFORMER_VOCABULARY)
 
 
-
-
 class Encoder(nn.Module):
   latent_dim: int = 3
   embed_width: int = 2

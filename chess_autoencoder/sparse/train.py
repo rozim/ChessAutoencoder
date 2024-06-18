@@ -1,16 +1,15 @@
-import os
-import warnings
-import time
 import functools
-import tensorflow as tf
-
-import numpy as np
+import os
+import time
+import warnings
 
 import flax
 import jax
 import jax.numpy as jnp
 import jax.random
+import numpy as np
 import optax
+import tensorflow as tf
 from absl import app, flags, logging
 from clu import metrics
 from flax import jax_utils
@@ -18,11 +17,9 @@ from flax import linen as nn
 from flax import struct
 from flax.training import common_utils, train_state
 from jax import grad, jit, lax, vmap
-from ml_collections import config_dict
 from ml_collections import config_dict, config_flags
 
 from model import AutoEncoder
-
 from schema import (LABEL_VOCABULARY, TRANSFORMER_FEATURES, TRANSFORMER_LENGTH,
                     TRANSFORMER_SHAPE, TRANSFORMER_VOCABULARY)
 
