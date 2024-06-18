@@ -1,11 +1,13 @@
-import tensorflow as tf
-import time
 import functools
-import sys, os
+import os
+import sys
+import time
 
+import tensorflow as tf
 from absl import app
 
 from schema import TRANSFORMER_FEATURES_FEN
+
 
 def main(argv):
   ds = tf.data.TFRecordDataset(['data/mega-2400-00000-of-00100'], 'ZLIB')

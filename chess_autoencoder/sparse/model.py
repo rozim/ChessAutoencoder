@@ -40,7 +40,6 @@ class Encoder(nn.Module):
     assert_rank(x, 2)
     assert_shape(x, (None, TRANSFORMER_LENGTH))
 
-    print('e/x0', x.shape)
     if x.dtype == jnp.int64:
       x = jnp.asarray(x, dtype=jnp.int32)
 
@@ -72,7 +71,6 @@ class Decoder(nn.Module):
 
   @nn.compact
   def __call__(self, x):
-    print('x0', x.shape)
     assert_rank(x, 2)
 
     assert_shape(x, (None, self.latent_dim))
@@ -134,7 +132,6 @@ def old_train_step(
 
 
 def main(argv):
-  print(get_config())
   latent_dim = 2
   embed_width = 3
   rng = jax.random.PRNGKey(int(time.time()))
