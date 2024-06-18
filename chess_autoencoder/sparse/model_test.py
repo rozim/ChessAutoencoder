@@ -8,10 +8,10 @@ import jax.random
 import numpy as np
 import optax
 import tensorflow as tf
-from chex import assert_rank, assert_shape
+from chex import assert_rank, assert_shape, assert_type
 from flax.training import common_utils, train_state
 
-from model import AutoEncoder
+from model import AutoEncoder, Encoder
 from schema import (LABEL_VOCABULARY, TRANSFORMER_FEATURES, TRANSFORMER_LENGTH,
                     TRANSFORMER_SHAPE, TRANSFORMER_VOCABULARY)
 
@@ -101,3 +101,23 @@ class TestModel:
 
     logits = ae.apply(ae_variables, sample_x)
     assert_shape(logits, (None, TRANSFORMER_LENGTH, LABEL_VOCABULARY))
+    assert_type(logits, jnp.float32)
+
+
+  def test_encoder_shape(self):
+    latent_dim = 2
+    embed_width = 3
+    rng = jax.random.PRNGKey(42)
+    rng, rnd_enc = jax.random.split(rng, num=2)
+    enc = Encoder(latent_dim=latent_dim, embed_width=embed_width)
+    sample_x = jax.random.randint(key=rng,
+                                  shape=((1,) + TRANSFORMER_SHAPE),
+                                  minval=0,
+                                  maxval=TRANSFORMER_VOCABULARY,
+                                  dtype=jnp.int32)
+    enc_variables = enc.init(rnd_enc, sample_x)
+
+    z = enc.apply(enc_variables, sample_x)
+    assert_shape(z, (None, latent_dim))
+    assert z.dtype == jnp.float32
+    assert_type(z, jnp.float32)
