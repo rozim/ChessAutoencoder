@@ -58,6 +58,7 @@ class Encoder(nn.Module):
 
     # shape: (TRANSFORMER_LENGTH * embed_with)
     x = nn.Dense(name='encoding', features=self.latent_dim)(x)
+    x = jax.nn.sigmoid(x)
 
     # shape: (latent_dim)
     return x
