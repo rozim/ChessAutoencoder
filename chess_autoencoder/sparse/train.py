@@ -2,6 +2,7 @@ import functools
 import os
 import time
 import warnings
+from typing import Any
 
 import flax
 import jax
@@ -19,7 +20,7 @@ from flax.training import common_utils, train_state
 from jax import grad, jit, lax, vmap
 from ml_collections import config_dict, config_flags
 
-from model import AutoEncoder
+from model import AutoEncoderLabelHead
 from schema import (LABEL_VOCABULARY, TRANSFORMER_FEATURES, TRANSFORMER_LENGTH,
                     TRANSFORMER_SHAPE, TRANSFORMER_VOCABULARY)
 
@@ -28,11 +29,22 @@ warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 
 AUTOTUNE = tf.data.AUTOTUNE
-START = int(time.time())
+START = time.time()
 CONFIG = config_flags.DEFINE_config_file('config', 'config.py')
 
 LOGDIR = flags.DEFINE_string('logdir', '/tmp/logdir', '')
 
+
+def write_metrics(writer: tf.summary.SummaryWriter,
+                  step: int,
+                  metrics: Any,
+                  hparams: Any = None) -> None:
+  with writer.as_default(step):
+    for k, v in metrics.items():
+      tf.summary.scalar(k, v)
+    if hparams:
+      hp.hparams(hparams)
+  writer.flush()
 
 def compute_metrics(*, logits: jnp.ndarray, labels: jnp.ndarray) -> dict[str, jnp.ndarray]:
   accuracy = jnp.mean(jnp.argmax(logits, -1) == labels)
@@ -89,11 +101,11 @@ def main(argv):
 
   cfg = CONFIG.value
   with open(os.path.join(LOGDIR.value, 'config.txt'), 'w') as f:
-            f.write(str(cfg))
+    f.write(str(cfg))
 
   rng = jax.random.PRNGKey(int(time.time()))
   rng, rnd_ae = jax.random.split(rng, num=2)
-  model = AutoEncoder(**cfg.model)
+  model = AutoEncoderLabelHead(**cfg.model)
   x = jax.random.randint(key=rng,
                                 shape=((1,) + TRANSFORMER_SHAPE),
                                 minval=0,
@@ -119,25 +131,53 @@ def main(argv):
     tx=optimizer,
     params=variables['params'])
 
-  nb = 0
+  step = 0
   print('training')
   ar = []
 
+  csv = open(os.path.join(LOGDIR.value, 'train.csv'), 'w')
+  csv.write('step,elapsed,loss,accuracy\n')
+  tsv = open(os.path.join(LOGDIR.value, 'train.tsv'), 'w')
+  tsv.write('step\telapsed\tloss\taccuracy\n')
+  tsv.flush()
+
+  train_writer = tf.summary.create_file_writer(
+    os.path.join(LOGDIR.value, 'train'))
+
+  t1 = time.time()
   for batch in iter(ds):
-    nb += 1
+    step += 1
     label = batch['label']
     label = label.reshape([label.shape[0], 1])
     state, metrics = train_step(state, batch['board'], label)
-    print('metrics: ', metrics)
+    # print('metrics: ', metrics)
     ar.append(metrics)
-    if nb % 100 == 0:
+    if step % 1000 == 0:
       m = accumulate_metrics(ar)
-      print(nb, 'acc: ', jnp.asarray(m['accuracy']), 'loss: ', jnp.asarray(m['loss']))
+      train_loss = jnp.asarray(m['loss'])
+      train_acc = jnp.asarray(m['accuracy'])
+      elapsed = time.time() - START
+      dt = time.time() - t1
+      t1 = time.time()
+      print(f'{step:6d} dt={elapsed:6.1f}, loss={train_loss:6.4f}, acc={train_acc:6.4f}')
+      csv.write(f'{step},{elapsed},{train_loss},{train_acc}\n')
+      csv.flush()
+      tsv.write(f'{step:12d}\t{elapsed:12f}\t{train_loss:12f}\t{train_acc:12f}\n')
+      tsv.flush()
+
+      write_metrics(train_writer, step,
+                    {'accuracy': train_acc,
+                     'loss': train_loss,
+                     'time/elapsed': dt})
+                     #'time/xps': (config.train.steps * config.train.data.batch_size) / dt})
+
       ar = []
+  csv.close()
+  csv = None
+  tsv.close()
+  tsv = None
 
-
-  print('done')
-  print(nb)
+  print('all done')
 
 
 if __name__ == "__main__":

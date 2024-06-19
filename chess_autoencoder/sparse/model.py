@@ -64,7 +64,7 @@ class Encoder(nn.Module):
     return x
 
 
-class Decoder(nn.Module):
+class DecoderLabelHead(nn.Module):
   latent_dim: int = 3
   embed_width: int = 2
 
@@ -80,14 +80,14 @@ class Decoder(nn.Module):
     assert_shape(x, (None, TRANSFORMER_LENGTH, LABEL_VOCABULARY))
     return x
 
-class AutoEncoder(nn.Module):
+class AutoEncoderLabelHead(nn.Module):
   latent_dim: int = 3
   embed_width: int = 2
 
   @nn.compact
   def __call__(self, x):
     encoder = Encoder(self.latent_dim, self.embed_width)
-    decoder = Decoder(self.latent_dim, self.embed_width)
+    decoder = DecoderLabelHead(self.latent_dim, self.embed_width)
     z = encoder(x)
     y = decoder(z)
     return y

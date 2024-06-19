@@ -11,7 +11,7 @@ import tensorflow as tf
 from chex import assert_rank, assert_shape, assert_type
 from flax.training import common_utils, train_state
 
-from model import AutoEncoder, Encoder
+from model import AutoEncoderLabelHead, Encoder
 from schema import (LABEL_VOCABULARY, TRANSFORMER_FEATURES, TRANSFORMER_LENGTH,
                     TRANSFORMER_SHAPE, TRANSFORMER_VOCABULARY)
 
@@ -57,7 +57,7 @@ class TestModel:
     embed_width = 3
     rng = jax.random.PRNGKey(42)
     rng, rnd_ae = jax.random.split(rng, num=2)
-    ae = AutoEncoder(latent_dim=latent_dim, embed_width=embed_width)
+    ae = AutoEncoderLabelHead(latent_dim=latent_dim, embed_width=embed_width)
     sample_x = jax.random.randint(key=rng,
                                   shape=((1,) + TRANSFORMER_SHAPE),
                                   minval=0,
@@ -86,12 +86,12 @@ class TestModel:
     assert last['loss'] < 0.1
 
 
-  def test_logits_shape(self):
+  def test_label_logits_shape(self):
     latent_dim = 2
     embed_width = 3
     rng = jax.random.PRNGKey(42)
     rng, rnd_ae = jax.random.split(rng, num=2)
-    ae = AutoEncoder(latent_dim=latent_dim, embed_width=embed_width)
+    ae = AutoEncoderLabelHead(latent_dim=latent_dim, embed_width=embed_width)
     sample_x = jax.random.randint(key=rng,
                                   shape=((1,) + TRANSFORMER_SHAPE),
                                   minval=0,

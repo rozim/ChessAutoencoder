@@ -4,6 +4,8 @@ from ml_collections import config_dict
 def get_config() -> config_dict.ConfigDict:
   config = config_dict.ConfigDict()
 
+  # config.batch_size = 8
+
   config.model = config_dict.ConfigDict()
   config.train = config_dict.ConfigDict()
 
@@ -11,6 +13,9 @@ def get_config() -> config_dict.ConfigDict:
   config.model.embed_width = 8
 
   config.train.batch_size = 8
+  #config.train.batch_size = config.get_ref('batch_size')
   config.train.shuffle = 0
+  # config.train.optimizer = 'adamw'
+  config.train.lr = 6e-4
 
   return config

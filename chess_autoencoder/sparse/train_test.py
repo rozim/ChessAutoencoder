@@ -12,7 +12,7 @@ from chex import assert_rank, assert_shape, assert_type
 from flax.training import common_utils, train_state
 
 import train
-from model import AutoEncoder, Encoder
+from model import AutoEncoderLabelHead, Encoder
 from schema import (LABEL_VOCABULARY, TRANSFORMER_FEATURES, TRANSFORMER_LENGTH,
                     TRANSFORMER_SHAPE, TRANSFORMER_VOCABULARY)
 
