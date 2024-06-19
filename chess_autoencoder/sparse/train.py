@@ -1,4 +1,7 @@
 import functools
+import random
+import sys
+import glob
 import os
 import time
 import warnings
@@ -10,6 +13,7 @@ import jax.numpy as jnp
 import jax.random
 import numpy as np
 import optax
+import orbax.checkpoint as ocp
 import tensorflow as tf
 from absl import app, flags, logging
 from clu import metrics
@@ -80,20 +84,34 @@ def train_step(
   return state, metrics
 
 
-def create_dataset(fn: str, cfg: config_dict.ConfigDict) -> tf.data.Dataset:
-  ds = tf.data.TFRecordDataset(['data/mega-2400-00000-of-00100'], 'ZLIB')
-  ds = ds.batch(cfg.train.batch_size, drop_remainder=True)
-  ds = ds.map(functools.partial(tf.io.parse_example, features=TRANSFORMER_FEATURES),
-              num_parallel_calls=AUTOTUNE, deterministic=False)
-  ds = ds.prefetch(AUTOTUNE)
+def create_dataset(pat: str, cfg: config_dict.ConfigDict) -> tf.data.Dataset:
+  files = glob.glob(pat)
+  assert len(files) > 0, [pat, glob.glob(pat)]
+  random.shuffle(files)
+
+  ds = tf.data.TFRecordDataset(files, 'ZLIB', num_parallel_reads=4)
+
   if cfg.train.shuffle:
     ds = ds.shuffle(cfg.train.shuffle)
+
+  ds = ds.batch(cfg.train.batch_size, drop_remainder=True)
+
+  ds = ds.map(functools.partial(tf.io.parse_example, features=TRANSFORMER_FEATURES),
+              num_parallel_calls=AUTOTUNE, deterministic=False)
+
+  ds = ds.prefetch(AUTOTUNE)
+
   ds = ds.as_numpy_iterator()
   return ds
 
 
 
 def main(argv):
+  tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
+  logging.set_verbosity('error')
+  os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+  warnings.filterwarnings('ignore', category=Warning)
+
   try:
     os.mkdir(LOGDIR.value)
   except:
@@ -124,12 +142,17 @@ def main(argv):
 
   optimizer = optax.adamw(learning_rate=0.001)
 
-  ds = create_dataset('data/mega-2400-00000-of-00100', cfg)
+  ds = create_dataset('data/mega-2400-?????-of-?????', cfg)
 
   state = train_state.TrainState.create(
     apply_fn=model.apply,
     tx=optimizer,
     params=variables['params'])
+
+
+  c_path = ocp.test_utils.erase_and_create_empty(os.path.join(LOGDIR.value, 'checkpoint'))
+  c_options = ocp.CheckpointManagerOptions(max_to_keep=3)
+  c_mngr = ocp.CheckpointManager(c_path, options=c_options)
 
   step = 0
   print('training')
@@ -153,6 +176,7 @@ def main(argv):
     # print('metrics: ', metrics)
     ar.append(metrics)
     if step % 1000 == 0:
+      c_mngr.save(step, args=ocp.args.StandardSave(state))
       m = accumulate_metrics(ar)
       train_loss = jnp.asarray(m['loss'])
       train_acc = jnp.asarray(m['accuracy'])
@@ -168,10 +192,11 @@ def main(argv):
       write_metrics(train_writer, step,
                     {'accuracy': train_acc,
                      'loss': train_loss,
-                     'time/elapsed': dt})
-                     #'time/xps': (config.train.steps * config.train.data.batch_size) / dt})
-
+                     'time/elapsed': dt,
+                     'time/xps': (1000 * cfg.train.batch_size) / dt})
       ar = []
+
+  c_mngr.wait_until_finished()  # async..
   csv.close()
   csv = None
   tsv.close()
