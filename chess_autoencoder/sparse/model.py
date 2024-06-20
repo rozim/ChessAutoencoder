@@ -32,6 +32,7 @@ from schema import (LABEL_VOCABULARY, TRANSFORMER_FEATURES, TRANSFORMER_LENGTH,
 class Encoder(nn.Module):
   latent_dim: int = 3
   embed_width: int = 2
+  ln: bool = False
 
   @nn.compact
   def __call__(self, x):
@@ -58,6 +59,8 @@ class Encoder(nn.Module):
 
     # shape: (TRANSFORMER_LENGTH * embed_with)
     x = nn.Dense(name='encoding', features=self.latent_dim)(x)
+    if self.ln:
+      x = nn.LayerNorm()(x)
     x = jax.nn.sigmoid(x)
 
     # shape: (latent_dim)
@@ -68,8 +71,8 @@ class DecoderLabelHead(nn.Module):
   latent_dim: int = 3
   embed_width: int = 2
   label_frequencies: Any = None
-  #bias_init = None
-  bias_init_scale: float = 1.0
+  bias_init_scale: float = 0.01
+  ln: bool = False
 
   @nn.compact
   def __call__(self, x):
@@ -80,9 +83,12 @@ class DecoderLabelHead(nn.Module):
     x = nn.Dense(name='decoding', features=(TRANSFORMER_LENGTH * self.embed_width))(x)
     x = x.reshape((x.shape[0], TRANSFORMER_LENGTH, self.embed_width))
 
+    if self.ln:
+      x = nn.LayerNorm()(x)
+    x = nn.relu(x)
+
     if self.label_frequencies is not None:
       bias_init = jnp.log(1. / self.label_frequencies)
-      #bias_init = jnp.expand_dims(bias_init, axis=0)  # Ensure correct shape for broadcasting
       bias_init = nn.initializers.constant(bias_init * self.bias_init_scale)
       x = nn.Dense(name='logits_bias_init', features=LABEL_VOCABULARY,
                    bias_init=bias_init)(x)
@@ -95,12 +101,14 @@ class AutoEncoderLabelHead(nn.Module):
   latent_dim: int = 3
   embed_width: int = 2
   label_frequencies: Any = None
+  ln: bool = False
 
   @nn.compact
   def __call__(self, x):
-    encoder = Encoder(self.latent_dim, self.embed_width)
+    encoder = Encoder(self.latent_dim, self.embed_width, ln=self.ln)
     decoder = DecoderLabelHead(self.latent_dim, self.embed_width,
-                               label_frequencies=self.label_frequencies)
+                               label_frequencies=self.label_frequencies,
+                               ln=self.ln)
     z = encoder(x)
     y = decoder(z)
     return y

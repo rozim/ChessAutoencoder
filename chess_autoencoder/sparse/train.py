@@ -166,6 +166,10 @@ def main(argv):
   jax.tree_map(lambda x: x.shape, variables)
 
   optimizer = optax.adamw(learning_rate=0.001)
+  #optimizer = optax.chain(
+  #optax.clip(1.0),  # Clip gradients at 1
+  #optax.adam(lr_schedule)
+  #)
 
   ds = create_dataset('data/mega-2400-?????-of-?????', cfg)
 
