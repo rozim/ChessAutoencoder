@@ -6,11 +6,13 @@ import os
 import time
 import warnings
 from typing import Any
+import pprint
 
 import flax
 import jax
 import jax.numpy as jnp
 import jax.random
+from jax import jax
 import numpy as np
 import optax
 import orbax.checkpoint as ocp
@@ -37,6 +39,7 @@ START = time.time()
 CONFIG = config_flags.DEFINE_config_file('config', 'config.py')
 
 LOGDIR = flags.DEFINE_string('logdir', '/tmp/logdir', '')
+LABEL_BIAS = flags.DEFINE_string('label_bias', None, 'Text file of label frequencies')
 
 
 def write_metrics(writer: tf.summary.SummaryWriter,
@@ -105,6 +108,12 @@ def create_dataset(pat: str, cfg: config_dict.ConfigDict) -> tf.data.Dataset:
   return ds
 
 
+def log_config(cfg: config_dict.ConfigDict):
+  with open(os.path.join(LOGDIR.value, 'config.txt'), 'w') as f:
+    f.write(pprint.pformat(cfg))
+  with open(os.path.join(LOGDIR.value, 'config.json'), 'w') as f:
+    f.write(cfg.to_json())
+
 
 def main(argv):
   tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
@@ -118,12 +127,28 @@ def main(argv):
     pass
 
   cfg = CONFIG.value
-  with open(os.path.join(LOGDIR.value, 'config.txt'), 'w') as f:
-    f.write(str(cfg))
+  log_config(cfg)
+
+  label_frequencies = None
+  if LABEL_BIAS.value:
+    with open(LABEL_BIAS.value, 'r') as f:
+      label_frequencies = jnp.asarray([float(foo) for foo in f.readlines()])
+      #ar += 1e-10 # avoid division by 0
+      #bias_init = jnp.log(1.0 / ar)
+      #assert jnp.all(lax.is_finite(bias_init))
+
 
   rng = jax.random.PRNGKey(int(time.time()))
   rng, rnd_ae = jax.random.split(rng, num=2)
-  model = AutoEncoderLabelHead(**cfg.model)
+
+  if label_frequencies is not None:
+    hack = config_dict.ConfigDict(cfg.model)
+    hack.unlock()
+    hack.label_frequencies = label_frequencies
+  else:
+    hack = cfg.model
+  model = AutoEncoderLabelHead(**hack)
+  #model = AutoEncoderLabelHead(**cfg.model)
   x = jax.random.randint(key=rng,
                                 shape=((1,) + TRANSFORMER_SHAPE),
                                 minval=0,
