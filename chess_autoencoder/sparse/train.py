@@ -41,23 +41,39 @@ CONFIG = config_flags.DEFINE_config_file('config', 'config.py')
 LOGDIR = flags.DEFINE_string('logdir', '/tmp/logdir', '')
 LABEL_BIAS = flags.DEFINE_string('label_bias', None, 'Text file of label frequencies')
 
+ALL_ACC = flags.DEFINE_boolean('all_accuracy', True, '')
+
 
 def write_metrics(writer: tf.summary.SummaryWriter,
                   step: int,
                   metrics: Any,
                   hparams: Any = None) -> None:
+
   with writer.as_default(step):
     for k, v in metrics.items():
       tf.summary.scalar(k, v)
     if hparams:
       hp.hparams(hparams)
+    if True: # acc hack
+      hv = []
+      for k in sorted(metrics.keys()):
+        if 'x_acc/acc_' in k: # acc/acc#
+          hv.append(metrics[k])
+      assert len(hv)
+      tf.summary.histogram('x_acc_hist', hv, buckets=TRANSFORMER_LENGTH)
+
   writer.flush()
 
 def compute_metrics(*, logits: jnp.ndarray, labels: jnp.ndarray) -> dict[str, jnp.ndarray]:
   accuracy = jnp.mean(jnp.argmax(logits, -1) == labels)
+
+
   metrics = {
-      'accuracy': accuracy,
+    'accuracy': accuracy,
   }
+  if ALL_ACC.value:
+    for i in range(TRANSFORMER_LENGTH):
+      metrics[f'x_acc/acc_{i:02d}'] = jnp.mean(jnp.argmax(logits[:, :, i:(i+1)], -1) == labels[:, i:(i+1)])
   return metrics
 
 
@@ -220,11 +236,16 @@ def main(argv):
       tsv.write(f'{step:12d}\t{elapsed:12f}\t{train_loss:12f}\t{train_acc:12f}\n')
       tsv.flush()
 
-      write_metrics(train_writer, step,
-                    {'accuracy': train_acc,
-                     'loss': train_loss,
-                     'time/elapsed': dt,
-                     'time/xps': (1000 * cfg.train.batch_size) / dt})
+      sw_m = {'accuracy': train_acc,
+              'loss': train_loss,
+              'time/elapsed': dt,
+              'time/xps': (1000 * cfg.train.batch_size) / dt}
+      if ALL_ACC.value:
+        for k, v in m.items():
+          if 'acc/acc' in k:
+            sw_m[k] = v
+      write_metrics(train_writer, step, sw_m)
+
       ar = []
 
   c_mngr.wait_until_finished()  # async..
