@@ -11,6 +11,11 @@ TRANSFORMER_FEATURES = {
   'board': tf.io.FixedLenFeature(TRANSFORMER_SHAPE, tf.int64),
   'label': tf.io.FixedLenFeature([], tf.int64)
 }
+
+TRANSFORMER_BOARD_FEATURES = {
+  'board': tf.io.FixedLenFeature(TRANSFORMER_SHAPE, tf.int64),
+}
+
 TRANSFORMER_FEATURES_FEN = {
   'board': tf.io.FixedLenFeature(TRANSFORMER_SHAPE, tf.int64),
   'label': tf.io.FixedLenFeature([], tf.int64),

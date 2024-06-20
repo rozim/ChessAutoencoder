@@ -103,6 +103,24 @@ class TestModel:
     assert_shape(logits, (None, TRANSFORMER_LENGTH, LABEL_VOCABULARY))
     assert_type(logits, jnp.float32)
 
+  def test_board_label_logits_shape(self):
+    latent_dim = 7
+    embed_width = 5
+    rng = jax.random.PRNGKey(42)
+    rng, rnd_ae = jax.random.split(rng, num=2)
+    ae = AutoEncoderLabelHead(latent_dim=latent_dim, embed_width=embed_width,
+                              label_vocabulary=TRANSFORMER_VOCABULARY)
+    sample_x = jax.random.randint(key=rng,
+                                  shape=((1,) + TRANSFORMER_SHAPE),
+                                  minval=0,
+                                  maxval=TRANSFORMER_VOCABULARY,
+                                  dtype=jnp.int32)
+    ae_variables = ae.init(rnd_ae, sample_x)
+
+    logits = ae.apply(ae_variables, sample_x)
+    assert_shape(logits, (None, TRANSFORMER_LENGTH, TRANSFORMER_VOCABULARY))
+    assert_type(logits, jnp.float32)
+
 
   def test_encoder_shape(self):
     latent_dim = 2

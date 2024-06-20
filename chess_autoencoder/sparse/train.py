@@ -1,18 +1,18 @@
+import datetime
 import functools
-import random
-import sys
 import glob
 import os
+import pprint
+import random
+import sys
 import time
 import warnings
 from typing import Any
-import pprint
 
 import flax
 import jax
 import jax.numpy as jnp
 import jax.random
-from jax import jax
 import numpy as np
 import optax
 import orbax.checkpoint as ocp
@@ -23,12 +23,12 @@ from flax import jax_utils
 from flax import linen as nn
 from flax import struct
 from flax.training import common_utils, train_state
-from jax import grad, jit, lax, vmap
+from jax import grad, jax, jit, lax, vmap
 from ml_collections import config_dict, config_flags
 
 from model import AutoEncoderLabelHead
 from schema import (LABEL_VOCABULARY, TRANSFORMER_FEATURES, TRANSFORMER_LENGTH,
-                    TRANSFORMER_SHAPE, TRANSFORMER_VOCABULARY)
+                    TRANSFORMER_SHAPE, TRANSFORMER_VOCABULARY, TRANSFORMER_BOARD_FEATURES)
 
 warnings.simplefilter('once')
 warnings.filterwarnings("ignore", category=DeprecationWarning)
@@ -99,7 +99,12 @@ def create_dataset(pat: str, cfg: config_dict.ConfigDict) -> tf.data.Dataset:
 
   ds = ds.batch(cfg.train.batch_size, drop_remainder=True)
 
-  ds = ds.map(functools.partial(tf.io.parse_example, features=TRANSFORMER_FEATURES),
+  if cfg.label == 'move':
+    features = TRANSFORMER_FEATURES
+  else:
+    features = TRANSFORMER_BOARD_FEATURES
+
+  ds = ds.map(functools.partial(tf.io.parse_example, features=features),
               num_parallel_calls=AUTOTUNE, deterministic=False)
 
   ds = ds.prefetch(AUTOTUNE)
@@ -120,6 +125,7 @@ def main(argv):
   logging.set_verbosity('error')
   os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
   warnings.filterwarnings('ignore', category=Warning)
+  # datetime.datetime.today().strftime('%Y%m%d_%H%M%S')
 
   try:
     os.mkdir(LOGDIR.value)
@@ -127,6 +133,10 @@ def main(argv):
     pass
 
   cfg = CONFIG.value
+  assert cfg.label in ['move', 'board']
+  model_extra = {}
+  if cfg.label == 'board':
+    move_extra = {'label_vocabulary': TRANSFORMER_VOCABULARY}
   log_config(cfg)
 
   rng = jax.random.PRNGKey(int(time.time()))
@@ -142,7 +152,10 @@ def main(argv):
 
   variables = model.init(rnd_ae, x)
   with open(os.path.join(LOGDIR.value, 'model-tabulate.txt'), 'w') as f:
-    f.write(model.tabulate(rng, x, console_kwargs={'width': 120}))
+    f.write(model.tabulate(rng, x))
+    #table_kwargs={'width': 180}))
+    #console_kwargs={'width': 180},
+    #column_kwargs={'width': 180}))
     flattened, _ = jax.tree_util.tree_flatten_with_path(variables)
     for key_path, value in flattened:
       f.write(f'{jax.tree_util.keystr(key_path):40s} {str(value.shape):20s} {str(value.dtype):10s}\n')
@@ -183,8 +196,13 @@ def main(argv):
   t1 = time.time()
   for batch in iter(ds):
     step += 1
-    label = batch['label']
-    label = label.reshape([label.shape[0], 1])
+
+    if cfg.label == 'move':
+      label = batch['label']
+      label = label.reshape([label.shape[0], 1])
+    else:
+      label = batch['board']
+
     state, metrics = train_step(state, batch['board'], label)
     # print('metrics: ', metrics)
     ar.append(metrics)

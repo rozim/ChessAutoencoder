@@ -72,6 +72,7 @@ class DecoderLabelHead(nn.Module):
   embed_width: int = 2
   bias_init_scale: float = 0.01
   ln: bool = False
+  label_vocabulary: int = LABEL_VOCABULARY
 
   @nn.compact
   def __call__(self, x):
@@ -86,20 +87,22 @@ class DecoderLabelHead(nn.Module):
       x = nn.LayerNorm()(x)
     x = nn.relu(x)
 
-    x = nn.Dense(name='logits', features=(LABEL_VOCABULARY))(x)
-    assert_shape(x, (None, TRANSFORMER_LENGTH, LABEL_VOCABULARY))
+    x = nn.Dense(name='logits', features=(self.label_vocabulary))(x)
+    assert_shape(x, (None, TRANSFORMER_LENGTH, self.label_vocabulary))
     return x
 
 class AutoEncoderLabelHead(nn.Module):
   latent_dim: int = 3
   embed_width: int = 2
   ln: bool = False
+  label_vocabulary: int = LABEL_VOCABULARY
 
   @nn.compact
   def __call__(self, x):
     encoder = Encoder(self.latent_dim, self.embed_width, ln=self.ln)
     decoder = DecoderLabelHead(self.latent_dim, self.embed_width,
-                               ln=self.ln)
+                               ln=self.ln,
+                               label_vocabulary=self.label_vocabulary)
     z = encoder(x)
     y = decoder(z)
     return y

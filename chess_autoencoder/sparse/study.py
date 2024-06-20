@@ -1,8 +1,9 @@
 # Study labels, print bias
 
+import collections
 import functools
-
 import glob
+
 import jax
 import optax
 import tensorflow as tf
@@ -10,7 +11,7 @@ import tqdm
 from absl import app, flags, logging
 from jax import grad
 from jax import numpy as jnp
-import collections
+
 
 @jax.jit
 def loss_fn(logits, label):

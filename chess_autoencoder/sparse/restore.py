@@ -1,10 +1,6 @@
 import jax
-from jax.tree_util import tree_structure
-from jax.tree_util import tree_flatten, tree_unflatten
-
 import orbax.checkpoint as ocp
-
-
+from jax.tree_util import tree_flatten, tree_structure, tree_unflatten
 
 #c_options = ocp.CheckpointManagerOptions(max_to_keep=3)
 c_path = '/tmp/logdir/checkpoint'
