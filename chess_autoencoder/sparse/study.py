@@ -18,7 +18,7 @@ def loss_fn(logits, label):
   return loss.mean()
 
 def main(argv):
-  lr = 0.01
+  lr = 0.001
   files = glob.glob('data/mega-2400-0000?-of-00100')
   print(f'NF: {len(files)}')
   ds = tf.data.TFRecordDataset(files, 'ZLIB')
