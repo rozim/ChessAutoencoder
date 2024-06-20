@@ -70,7 +70,6 @@ class Encoder(nn.Module):
 class DecoderLabelHead(nn.Module):
   latent_dim: int = 3
   embed_width: int = 2
-  label_frequencies: Any = None
   bias_init_scale: float = 0.01
   ln: bool = False
 
@@ -87,27 +86,19 @@ class DecoderLabelHead(nn.Module):
       x = nn.LayerNorm()(x)
     x = nn.relu(x)
 
-    if self.label_frequencies is not None:
-      bias_init = jnp.log(1. / self.label_frequencies)
-      bias_init = nn.initializers.constant(bias_init * self.bias_init_scale)
-      x = nn.Dense(name='logits_bias_init', features=LABEL_VOCABULARY,
-                   bias_init=bias_init)(x)
-    else:
-      x = nn.Dense(name='logits', features=(LABEL_VOCABULARY))(x)
+    x = nn.Dense(name='logits', features=(LABEL_VOCABULARY))(x)
     assert_shape(x, (None, TRANSFORMER_LENGTH, LABEL_VOCABULARY))
     return x
 
 class AutoEncoderLabelHead(nn.Module):
   latent_dim: int = 3
   embed_width: int = 2
-  label_frequencies: Any = None
   ln: bool = False
 
   @nn.compact
   def __call__(self, x):
     encoder = Encoder(self.latent_dim, self.embed_width, ln=self.ln)
     decoder = DecoderLabelHead(self.latent_dim, self.embed_width,
-                               label_frequencies=self.label_frequencies,
                                ln=self.ln)
     z = encoder(x)
     y = decoder(z)

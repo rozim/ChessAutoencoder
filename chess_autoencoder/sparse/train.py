@@ -129,26 +129,10 @@ def main(argv):
   cfg = CONFIG.value
   log_config(cfg)
 
-  label_frequencies = None
-  if LABEL_BIAS.value:
-    with open(LABEL_BIAS.value, 'r') as f:
-      label_frequencies = jnp.asarray([float(foo) for foo in f.readlines()])
-      #ar += 1e-10 # avoid division by 0
-      #bias_init = jnp.log(1.0 / ar)
-      #assert jnp.all(lax.is_finite(bias_init))
-
-
   rng = jax.random.PRNGKey(int(time.time()))
   rng, rnd_ae = jax.random.split(rng, num=2)
 
-  if label_frequencies is not None:
-    hack = config_dict.ConfigDict(cfg.model)
-    hack.unlock()
-    hack.label_frequencies = label_frequencies
-  else:
-    hack = cfg.model
-  model = AutoEncoderLabelHead(**hack)
-  #model = AutoEncoderLabelHead(**cfg.model)
+  model = AutoEncoderLabelHead(**cfg.model)
   x = jax.random.randint(key=rng,
                                 shape=((1,) + TRANSFORMER_SHAPE),
                                 minval=0,
