@@ -24,7 +24,7 @@ def main(argv):
   print(f'NF: {len(files)}')
   ds = tf.data.TFRecordDataset(files, 'ZLIB')
   ds = ds.map(functools.partial(tf.io.parse_example, features={
-    'label': tf.io.FixedLenFeature([], tf.int64)}))
+    'label': tf.io.FixedLenFeature([1], tf.int64)}))
   #ds = ds.take(10000)
   ds = ds.as_numpy_iterator()
 

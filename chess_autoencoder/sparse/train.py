@@ -7,6 +7,7 @@ import random
 import sys
 import time
 import warnings
+from chex import assert_rank, assert_shape
 from typing import Any
 
 import flax
@@ -26,9 +27,11 @@ from flax.training import common_utils, train_state
 from jax import grad, jax, jit, lax, vmap
 from ml_collections import config_dict, config_flags
 
-from model import AutoEncoderLabelHead
+from model import AutoEncoderBoardHead
 from schema import (LABEL_VOCABULARY, TRANSFORMER_FEATURES, TRANSFORMER_LENGTH,
                     TRANSFORMER_SHAPE, TRANSFORMER_VOCABULARY, TRANSFORMER_BOARD_FEATURES)
+
+from tensorboard.plugins.hparams import api as hp
 
 warnings.simplefilter('once')
 warnings.filterwarnings("ignore", category=DeprecationWarning)
@@ -41,7 +44,7 @@ CONFIG = config_flags.DEFINE_config_file('config', 'config.py')
 LOGDIR = flags.DEFINE_string('logdir', '/tmp/logdir', '')
 LABEL_BIAS = flags.DEFINE_string('label_bias', None, 'Text file of label frequencies')
 
-ALL_ACC = flags.DEFINE_boolean('all_accuracy', True, '')
+ALL_ACC = flags.DEFINE_boolean('all_accuracy', False, '')
 
 
 def write_metrics(writer: tf.summary.SummaryWriter,
@@ -52,9 +55,11 @@ def write_metrics(writer: tf.summary.SummaryWriter,
   with writer.as_default(step):
     for k, v in metrics.items():
       tf.summary.scalar(k, v)
+      print(k, v)
+    sys.exit(0)
     if hparams:
       hp.hparams(hparams)
-    if True: # acc hack
+    if ALL_ACC.value: # acc hack
       hv = []
       for k in sorted(metrics.keys()):
         if 'x_acc/acc_' in k: # acc/acc#
@@ -64,16 +69,40 @@ def write_metrics(writer: tf.summary.SummaryWriter,
 
   writer.flush()
 
+def gather_logits(logits, i):
+  start_indices = (0, 0, i)
+  slice_sizes = (logits.shape[0], logits.shape[1], 1)
+  return lax.dynamic_slice(logits, start_indices, slice_sizes)
+
+@jit
+def accuracy_non_zero(predictions: jnp.ndarray, labels: jnp.ndarray) -> jnp.ndarray:
+  res = jnp.mean(predictions == labels, where=labels != 0)
+  return jnp.nan_to_num(res)
+
+
 def compute_metrics(*, logits: jnp.ndarray, labels: jnp.ndarray) -> dict[str, jnp.ndarray]:
   accuracy = jnp.mean(jnp.argmax(logits, -1) == labels)
-
+  accuracy_nz = accuracy_non_zero(jnp.argmax(logits, -1), labels)
 
   metrics = {
     'accuracy': accuracy,
+    'accuracy_nz': accuracy_nz,
   }
   if ALL_ACC.value:
+    xeq = jnp.argmax(logits, axis=-1) == labels
     for i in range(TRANSFORMER_LENGTH):
-      metrics[f'x_acc/acc_{i:02d}'] = jnp.mean(jnp.argmax(logits[:, :, i:(i+1)], -1) == labels[:, i:(i+1)])
+      v1 = accuracy_non_zero(jnp.argmax(logits, axis=-1)[:, i:i+1], labels[:, i:i+1])
+      v2 = jnp.mean(xeq[:, i:i+1])
+      metrics[f'x_acc_nz/nz_acc_{i:02d}'] = v1
+      metrics[f'x_acc/acc_{i:02d}'] = v2
+
+      # metrics[f'x_acc_nz/nz_acc_{i:02d}'] = accuracy_non_zero(jnp.argmax(logits, axis=-1)[:, i:i+1],
+      #                                                         labels[:, i:i+1])
+      # metrics[f'x_acc/acc_{i:02d}'] = jnp.mean(xeq[:, i:i+1])
+
+  for k, v in metrics.items():
+    print('cm: ', k, v)
+
   return metrics
 
 
@@ -84,7 +113,7 @@ def accumulate_metrics(metrics: list) -> dict:
     for k in metrics[0]
   }
 
-@jax.jit
+##### @jax.jit
 def train_step(
     state: train_state.TrainState,
     x: jnp.ndarray,
@@ -99,8 +128,9 @@ def train_step(
   (loss, logits), grads = gradient_fn(state.params)
   state = state.apply_gradients(grads=grads)
   metrics = compute_metrics(logits=logits, labels=label)
+  print('m: ', metrics)
   metrics['loss'] = loss
-  return state, metrics
+  return state, metrics, logits
 
 
 def create_dataset(pat: str, cfg: config_dict.ConfigDict) -> tf.data.Dataset:
@@ -115,10 +145,7 @@ def create_dataset(pat: str, cfg: config_dict.ConfigDict) -> tf.data.Dataset:
 
   ds = ds.batch(cfg.train.batch_size, drop_remainder=True)
 
-  if cfg.label == 'move':
-    features = TRANSFORMER_FEATURES
-  else:
-    features = TRANSFORMER_BOARD_FEATURES
+  features = TRANSFORMER_BOARD_FEATURES
 
   ds = ds.map(functools.partial(tf.io.parse_example, features=features),
               num_parallel_calls=AUTOTUNE, deterministic=False)
@@ -149,16 +176,12 @@ def main(argv):
     pass
 
   cfg = CONFIG.value
-  assert cfg.label in ['move', 'board']
-  model_extra = {}
-  if cfg.label == 'board':
-    move_extra = {'label_vocabulary': TRANSFORMER_VOCABULARY}
   log_config(cfg)
 
   rng = jax.random.PRNGKey(int(time.time()))
   rng, rnd_ae = jax.random.split(rng, num=2)
 
-  model = AutoEncoderLabelHead(**cfg.model)
+  model = AutoEncoderBoardHead(**cfg.model)
   x = jax.random.randint(key=rng,
                                 shape=((1,) + TRANSFORMER_SHAPE),
                                 minval=0,
@@ -191,7 +214,6 @@ def main(argv):
     tx=optimizer,
     params=variables['params'])
 
-
   c_path = ocp.test_utils.erase_and_create_empty(os.path.join(LOGDIR.value, 'checkpoint'))
   c_options = ocp.CheckpointManagerOptions(max_to_keep=3)
   c_mngr = ocp.CheckpointManager(c_path, options=c_options)
@@ -213,24 +235,42 @@ def main(argv):
   for batch in iter(ds):
     step += 1
 
-    if cfg.label == 'move':
-      label = batch['label']
-      label = label.reshape([label.shape[0], 1])
-    else:
-      label = batch['board']
-
-    state, metrics = train_step(state, batch['board'], label)
-    # print('metrics: ', metrics)
+    state, metrics, logits = train_step(state,
+                                        x=batch['board'],
+                                        label=batch['board'])
+    if step > 5000 and False:
+      print('argmax logits')
+      print(jnp.argmax(logits, axis=-1).shape)
+      print(jnp.argmax(logits, axis=-1))
+      print()
+      print('board')
+      print(batch['board'].shape)
+      print(batch['board'])
+      eq = jnp.argmax(logits, axis=-1) == batch['board']
+      print('eq', eq.shape)
+      print(eq.astype(jnp.int32))
+      print(jnp.mean(jnp.argmax(logits, axis=-1) == batch['board']))
+      print(jnp.mean(jnp.argmax(logits, axis=-1) == batch['board'], axis=-1))
+      #foo = jnp.argmax(logits, axis=-1)
+      for i in range(TRANSFORMER_LENGTH):
+        print('col', i, eq[:, i:i+1], jnp.mean(eq[:, i:i+1]))
+        #z = gather_logits(logits, i)
+        #xl = labels[:, i:(i+1)]
+      sys.exit(0)
+    print('metrics/99: ', metrics)
     ar.append(metrics)
     if step % 1000 == 0:
+      print('ar: ', ar)
       c_mngr.save(step, args=ocp.args.StandardSave(state))
       m = accumulate_metrics(ar)
+      print('accumulate m: ', m)
       train_loss = jnp.asarray(m['loss'])
       train_acc = jnp.asarray(m['accuracy'])
+      train_acc_nz = jnp.asarray(m['accuracy_nz'])
       elapsed = time.time() - START
       dt = time.time() - t1
       t1 = time.time()
-      print(f'{step:6d} dt={elapsed:6.1f}, loss={train_loss:6.4f}, acc={train_acc:6.4f}')
+      print(f'{step:6d} dt={elapsed:6.1f}, loss={train_loss:6.4f}, acc={train_acc:6.4f} : {train_acc_nz:6.4f}')
       csv.write(f'{step},{elapsed},{train_loss},{train_acc}\n')
       csv.flush()
       tsv.write(f'{step:12d}\t{elapsed:12f}\t{train_loss:12f}\t{train_acc:12f}\n')

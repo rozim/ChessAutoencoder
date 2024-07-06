@@ -11,8 +11,8 @@ import tensorflow as tf
 from chex import assert_rank, assert_shape, assert_type
 from flax.training import common_utils, train_state
 
-from model import AutoEncoderLabelHead, Encoder
-from schema import (LABEL_VOCABULARY, TRANSFORMER_FEATURES, TRANSFORMER_LENGTH,
+from model import AutoEncoderBoardHead, Encoder
+from schema import (TRANSFORMER_FEATURES, TRANSFORMER_LENGTH,
                     TRANSFORMER_SHAPE, TRANSFORMER_VOCABULARY)
 
 
@@ -57,7 +57,7 @@ class TestModel:
     embed_width = 3
     rng = jax.random.PRNGKey(42)
     rng, rnd_ae = jax.random.split(rng, num=2)
-    ae = AutoEncoderLabelHead(latent_dim=latent_dim, embed_width=embed_width)
+    ae = AutoEncoderBoardHead(latent_dim=latent_dim, embed_width=embed_width)
     sample_x = jax.random.randint(key=rng,
                                   shape=((1,) + TRANSFORMER_SHAPE),
                                   minval=0,
@@ -65,8 +65,6 @@ class TestModel:
                                   dtype=jnp.int32)
     ae_variables = ae.init(rnd_ae, sample_x)
 
-    labels = jnp.array([[724]])
-    print('labels: ', labels)
     optimizer = optax.adamw(learning_rate=0.1)
     ts_ae = train_state.TrainState.create(
       apply_fn=ae.apply,
@@ -75,15 +73,15 @@ class TestModel:
 
     first = None
     for _ in range(20):
-      ts_ae, metrics = old_train_step(ts_ae, sample_x, labels)
+      ts_ae, metrics = old_train_step(ts_ae, x=sample_x, label=sample_x)
       m = old_accumulate_metrics([metrics])
       if first is None:
         first = m
       print('acc: ', m)
     last = m
-    assert last['accuracy'] > 0.9, last
+    assert last['accuracy'] > 0.0, last
+    assert last['accuracy'] > first['accuracy']
     assert last['loss'] < first['loss'], last
-    assert last['loss'] < 2.0, last
 
 
   def test_label_logits_shape(self):
@@ -91,7 +89,7 @@ class TestModel:
     embed_width = 3
     rng = jax.random.PRNGKey(42)
     rng, rnd_ae = jax.random.split(rng, num=2)
-    ae = AutoEncoderLabelHead(latent_dim=latent_dim, embed_width=embed_width)
+    ae = AutoEncoderBoardHead(latent_dim=latent_dim, embed_width=embed_width)
     sample_x = jax.random.randint(key=rng,
                                   shape=((1,) + TRANSFORMER_SHAPE),
                                   minval=0,
@@ -100,7 +98,7 @@ class TestModel:
     ae_variables = ae.init(rnd_ae, sample_x)
 
     logits = ae.apply(ae_variables, sample_x)
-    assert_shape(logits, (None, TRANSFORMER_LENGTH, LABEL_VOCABULARY))
+    assert_shape(logits, (None, TRANSFORMER_LENGTH, TRANSFORMER_VOCABULARY))
     assert_type(logits, jnp.float32)
 
   def test_board_label_logits_shape(self):
@@ -108,8 +106,8 @@ class TestModel:
     embed_width = 5
     rng = jax.random.PRNGKey(42)
     rng, rnd_ae = jax.random.split(rng, num=2)
-    ae = AutoEncoderLabelHead(latent_dim=latent_dim, embed_width=embed_width,
-                              label_vocabulary=TRANSFORMER_VOCABULARY)
+    ae = AutoEncoderBoardHead(latent_dim=latent_dim, embed_width=embed_width)
+
     sample_x = jax.random.randint(key=rng,
                                   shape=((1,) + TRANSFORMER_SHAPE),
                                   minval=0,

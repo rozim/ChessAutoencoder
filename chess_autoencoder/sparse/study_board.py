@@ -12,7 +12,7 @@ from absl import app, flags, logging
 from jax import grad
 from jax import numpy as jnp
 
-from schema import (LABEL_VOCABULARY, TRANSFORMER_FEATURES, TRANSFORMER_LENGTH,
+from schema import (TRANSFORMER_FEATURES, TRANSFORMER_LENGTH,
                     TRANSFORMER_SHAPE, TRANSFORMER_VOCABULARY)
 
 def main(argv):

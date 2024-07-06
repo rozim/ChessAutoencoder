@@ -17,6 +17,4 @@ def get_config() -> config_dict.ConfigDict:
   # config.train.optimizer = 'adamw'
   config.train.lr = 6e-4
 
-  config.label = 'board' # 'move' or 'board'
-
   return config

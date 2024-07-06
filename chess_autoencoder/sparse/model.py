@@ -25,7 +25,7 @@ warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 from chex import assert_rank, assert_shape
 
-from schema import (LABEL_VOCABULARY, TRANSFORMER_FEATURES, TRANSFORMER_LENGTH,
+from schema import (TRANSFORMER_FEATURES, TRANSFORMER_LENGTH,
                     TRANSFORMER_SHAPE, TRANSFORMER_VOCABULARY)
 
 
@@ -67,12 +67,11 @@ class Encoder(nn.Module):
     return x
 
 
-class DecoderLabelHead(nn.Module):
+class DecoderBoardHead(nn.Module):
   latent_dim: int = 3
   embed_width: int = 2
   bias_init_scale: float = 0.01
   ln: bool = False
-  label_vocabulary: int = LABEL_VOCABULARY
 
   @nn.compact
   def __call__(self, x):
@@ -86,23 +85,24 @@ class DecoderLabelHead(nn.Module):
     if self.ln:
       x = nn.LayerNorm()(x)
     x = nn.relu(x)
+    # tbd: positional embeddings
 
-    x = nn.Dense(name='logits', features=(self.label_vocabulary))(x)
-    assert_shape(x, (None, TRANSFORMER_LENGTH, self.label_vocabulary))
+    x = nn.Dense(name='logits', features=TRANSFORMER_VOCABULARY)(x)
+    assert_shape(x, (None, TRANSFORMER_LENGTH, TRANSFORMER_VOCABULARY))
     return x
 
-class AutoEncoderLabelHead(nn.Module):
+
+class AutoEncoderBoardHead(nn.Module):
   latent_dim: int = 3
   embed_width: int = 2
   ln: bool = False
-  label_vocabulary: int = LABEL_VOCABULARY
 
   @nn.compact
   def __call__(self, x):
     encoder = Encoder(self.latent_dim, self.embed_width, ln=self.ln)
-    decoder = DecoderLabelHead(self.latent_dim, self.embed_width,
-                               ln=self.ln,
-                               label_vocabulary=self.label_vocabulary)
+    decoder = DecoderBoardHead(self.latent_dim, self.embed_width,
+                               ln=self.ln)
+
     z = encoder(x)
     y = decoder(z)
     return y
