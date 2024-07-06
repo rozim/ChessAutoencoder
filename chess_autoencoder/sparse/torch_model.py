@@ -31,8 +31,8 @@ class MySimpleModel(nn.Module):
     self.flatten = nn.Flatten()
     self.ln1 = nn.LayerNorm(TRANSFORMER_LENGTH * self.embedding_dim)
 
-    self.dense = nn.LazyLinear(256)
-    self.ln2 = nn.LayerNorm(256)
+    self.dense = nn.LazyLinear(2048)
+    self.ln2 = nn.LayerNorm(2048)
     self.relu = nn.ReLU()
     self.logits = nn.LazyLinear(LABEL_VOCABULARY)
 
@@ -152,7 +152,7 @@ def main(argv):
       optimizer.step()
       optimizer.zero_grad()
 
-    if batch % 1000 == 0:
+    if batch % 10_000 == 0:
       loss, current = loss.item(), (batch + 1) * len(x)
       print(f"{reports}. loss: {loss:>7f}  [{current:>5d}] {100.0 * correct / correct_tot:>6.3f}")
       reports += 1
