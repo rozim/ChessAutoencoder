@@ -23,16 +23,17 @@ FLAGS = flags.FLAGS
 
 
 class MySimpleModel(nn.Module):
-  def __init__(self):
+  def __init__(self, embed_dim: int = 16,
+               layer_width: int = 64):
     super().__init__()
-    self.embedding_dim = 64
+    self.embedding_dim = embed_dim
     self.emb = torch.nn.Embedding(num_embeddings=TRANSFORMER_VOCABULARY,
                                   embedding_dim=self.embedding_dim)
     self.flatten = nn.Flatten()
     self.ln1 = nn.LayerNorm(TRANSFORMER_LENGTH * self.embedding_dim)
 
-    self.dense = nn.LazyLinear(2048)
-    self.ln2 = nn.LayerNorm(2048)
+    self.dense = nn.LazyLinear(layer_width)
+    self.ln2 = nn.LayerNorm(layer_width)
     self.relu = nn.ReLU()
     self.logits = nn.LazyLinear(LABEL_VOCABULARY)
 

@@ -1,0 +1,3 @@
+[submodule "chess_autoencoder/sparse/ml_collections"]
+	path = chess_autoencoder/sparse/ml_collections
+	url = https://github.com/google/ml_collections.git
