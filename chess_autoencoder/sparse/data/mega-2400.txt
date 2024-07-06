@@ -1,0 +1,3 @@
+# Records
+mega-2400-shuffled-test.jsonl.gz:   4,875,390
+mega-2400-shuffled-train.jsonl.gz: 43,878,568

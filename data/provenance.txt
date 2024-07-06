@@ -1,0 +1,11 @@
+ChessAutoencoder/chess_autoencoder
+
+python select-at-ply.py --ply=10  ~/Projects/ChessData/Twic/twic14*.pgn > ../data/twic-ply10.txt
+python select-at-ply.py --ply=20  ~/Projects/ChessData/Twic/twic14*.pgn > ../data/twic-ply20.txt
+python select-at-ply.py --ply=30  ~/Projects/ChessData/Twic/twic14*.pgn > ../data/twic-ply30.txt
+python select-at-ply.py --ply=40  ~/Projects/ChessData/Twic/twic14*.pgn > ../data/twic-ply40.txt
+
+twic14* -> thru twic1457
+
+python select-at-ply.py --ply=20  ~/Projects/ChessData/Twic/mega-clean.pgn > ../data/mega-twic-ply20.txt  2> ../data/mega-twic-ply20.err
+python select-at-ply.py --ply=40  ~/Projects/ChessData/Twic/mega-clean.pgn > ../data/mega-twic-ply40.txt  2> ../data/mega-twic-ply40.err

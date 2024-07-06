@@ -1,0 +1,6 @@
+https://stackoverflow.com/questions/56357794/unable-to-install-grpcio-using-pip-install-grpcio
+https://stackoverflow.com/questions/73741171/how-to-install-grpcio-on-macos-13-with-m1
+https://stackoverflow.com/questions/66640705/how-can-i-install-grpcio-on-an-apple-m1-silicon-laptop
+
+this works 2022-10-21:
+conda install grpcio
